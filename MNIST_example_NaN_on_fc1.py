@@ -19,6 +19,8 @@ class Net(nn.Module):
         self.dropout1 = nn.Dropout(0.25)#during training, randomly zeroes some of the elements of the input tensor, it forces neurons to be independant 
         self.dropout2 = nn.Dropout(0.5)#probability of zeroing value is input
         #fully connected layer: standard ANN layers
+        self.decoder_weights = nn.Parameter(torch.randn(128, 9216) * 0.01)
+        self.decoder_bias = nn.Parameter(torch.zeros(128, 9216))
         self.fc1 = nn.Linear(9216, 128)#9216 from maxpool to 128
         self.fc2 = nn.Linear(128, 10)#128 inputs, 10 outputs (0 through 10), 1 hidden layer of 128 neurons
 
@@ -30,21 +32,39 @@ class Net(nn.Module):
         x = F.max_pool2d(x, 2) #split each output image into 2x2 squares, take max value from 2x2 square. goes from 24*24 to 12*12
         x = self.dropout1(x) #zero 1/4 values randomly, forces neurons to be robust, they can't rely on other neurons providing input, prevent overfitting
         x = torch.flatten(x, 1) #turn into 1 dimensional array of 9216 values to give 1 value to each neuron
-        x = self.fc1(x) #first layer
-        x = F.relu(x) #non-linearity
-        x = self.dropout2(x) #zero half the outputs
-        x = self.fc2(x) #second layer
-        output = F.log_softmax(x, dim=1) #log softmax, more negative means less confident in value
-        return output
+        
+        features = x                        # save for reconstruction target
 
+        x = self.fc1(x)                     # (batch, 128)
+        x = F.relu(x)
+
+        # --- per-neuron autoencoder decode ---
+        # x is (batch, 128), unsqueeze to (batch, 128, 1)
+        # decoder_weights is (128, 9216)
+        # result is (batch, 128, 9216) — each neuron's independent reconstruction
+        decoded = None
+        if self.training:  # only compute during training, not eval
+            decoded = x.unsqueeze(2) * self.decoder_weights.unsqueeze(0) + self.decoder_bias.unsqueeze(0)
+
+        x = self.dropout2(x)
+        x = self.fc2(x)
+        output = F.log_softmax(x, dim=1)
+        return output, decoded, features
 
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train() #switch into training mode, dropout layers take effect, outputs scaled up by dropout percentage
     for batch_idx, (data, target) in enumerate(train_loader): #default batch size is 64, batch_idx is the id (0 through 63), data is tensor of shape [64, 1, 28, 28], and target is [64]
         data, target = data.to(device), target.to(device) #send data to same device as where the model is stored
         optimizer.zero_grad() #zero gradients
-        output = model(data) #model computs the data, outputs 10 log_softmax values
-        loss = F.nll_loss(output, target) #negative log-likelihood loss, takes the loss associated with the target and negates it
+        output, decoded, features = model(data)
+
+        # each neuron tries to reconstruct the original 9216 features independently
+        reconstruction_target = features.unsqueeze(1).expand_as(decoded)  # (batch, 128, 9216)
+        recon_loss = F.mse_loss(decoded, reconstruction_target)
+
+        class_loss = F.nll_loss(output, target)
+        loss = class_loss + 0.1 * recon_loss
+
         loss.backward() #propagate the loss associated with target through the network, computing d_loss/d_weight for each neuron through chain rule.
         optimizer.step() #optimiser applies changes through gradient descent (weight = weight - learning_rate * gradient), negative as gradient DESCENT
         if batch_idx % args.log_interval == 0: #after log_interval batches, print progress
@@ -61,7 +81,7 @@ def test(model, device, test_loader):
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
-            output = model(data)
+            output, _, _ = model(data)
             test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
             pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
