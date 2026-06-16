@@ -13,6 +13,8 @@ class Net(nn.Module):
         self.conv1 = nn.Conv2d(1, 32, 3, 1) #a convolution layer, 1 input channel, 32 output channels, aka, 32 different learned convolutions
                                             #applied to the input image. 1 way to think about this might be 28*28 image becomes 32 26*26 output images
                                             # each pixel in an output images being the output of a neuron whos inputs are 9 of the inputs and whos weights are the values from the kernel for that channel.
+        self.conv1_decoder_weights = nn.Parameter(torch.randn(32, 1, 3, 3)*0.01) #decoder weights for conv1, 32 output channels, 1 input channel, 3x3 kernel, initialized to small random values
+        self.conv1_decoder_bias = nn.Parameter(torch.zeros(32, 1, 3, 3)) #decoder bias for conv1, 32 output channels, 1 input channel, 3x3 kernel, initialized to zeros
         self.conv2 = nn.Conv2d(32, 64, 3, 1)#another convolution layer, 32 input channels, 64 output channels, this means the 3x3 kernel is being performed on all 32
                                             #of the previous outputs simultaneously, the kernel is 3x3x32, and we have 64 different learned kernels from this.
                                             #original image is 28*28, then we have 32 26*26 convolved images, then 64 24*24 images = 36,864 outputs, maxpool gives max of 4 pixels = 9216
@@ -23,6 +25,8 @@ class Net(nn.Module):
         self.fc2 = nn.Linear(128, 10)#128 inputs, 10 outputs (0 through 10), 1 hidden layer of 128 neurons
 
     def forward(self, x):
+        patches = F.unfold(x, kernel_size=3, stride=1) #extracts 3x3 patches from the input image, stride of 1 means we move 1 pixel at a time, so we get overlapping patches
+        patches = patches.view(x.size(0), 1, 3, 3, 26, 26)
         x = self.conv1(x) #first convolution
         x = F.relu(x) #non-linearity
         x = self.conv2(x) #second convolution
