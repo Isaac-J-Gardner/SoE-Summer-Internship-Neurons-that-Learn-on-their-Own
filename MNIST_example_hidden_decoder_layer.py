@@ -107,7 +107,7 @@ def run_single_experiment(args, device, train_loader, test_loader, recon_scaler)
     # Fresh model and optimizer for each sweep value
     torch.manual_seed(args.seed)
     model = Net().to(device)
-    optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
+    optimizer = optim.SGD(model.parameters(), lr=args.lr)
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
 
     epoch_results = []
