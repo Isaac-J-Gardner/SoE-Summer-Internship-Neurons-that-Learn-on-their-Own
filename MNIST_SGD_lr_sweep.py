@@ -7,7 +7,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
-from torch.optim.lr_scheduler import StepLR
 
 
 class Net(nn.Module):
@@ -104,7 +103,6 @@ def run_single(args, device, dataset1, dataset2, lr, seed):
 
     rows = []
     for epoch in range(1, args.epochs + 1):
-        epoch_lr = optimizer.param_groups[0]['lr']  #actual LR used this epoch (StepLR decays it)
         t0 = time.time()
         train_loss = train(args, model, device, train_loader, optimizer, epoch)
         test_loss, correct, accuracy = test(model, device, test_loader)
@@ -132,8 +130,6 @@ def main():
                         help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=10, metavar='N',
                         help='number of epochs to train per run (default: 10)')
-    parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
-                        help='Learning rate step gamma (default: 0.7)')
     parser.add_argument('--no-accel', action='store_true',
                         help='disables accelerator')
     parser.add_argument('--dry-run', action='store_true',
