@@ -132,3 +132,15 @@ def test(test_loader, model, criterion):
     print(f"Testset accuracy: {100*accuracy:>0.1f}%, average loss: {test_loss:>7f}")
 
 test(test_loader, model, criterion)
+
+W = model.fc1.weight.detach().cpu().numpy()   # (20, 784)
+
+fig, axes = plt.subplots(4, 5, figsize=(10, 8))
+for i, ax in enumerate(axes.flat):
+    filt = W[i].reshape(28, 28)
+    ax.imshow(filt, cmap='seismic',
+              vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())  # symmetric colormap centered at 0
+    ax.set_title(f'neuron {i}')
+    ax.axis('off')
+plt.tight_layout()
+plt.show()

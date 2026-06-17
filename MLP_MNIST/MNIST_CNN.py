@@ -32,32 +32,25 @@ for (data, target) in train_loader:
     print('target:', target.size(), 'type:', target.type())
     break
 
-pltsize=1
-plt.figure(figsize=(10*pltsize, pltsize))
-
 class SimpleMLP(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc1 = nn.Linear(28*28, 20)
-        self.decoder = nn.Linear(20, 784)
-        self.fc2 = nn.Linear(20, 10)
+        self.conv1 = nn.Conv2d(1, 20, 3, 1) #20 26x26 images = 13,520 outputs, 3380 after maxpool
+        self.fc2 = nn.Linear(3380, 10)
 
     def forward(self, x):
-        x = nn.Flatten()(x)
-        features = x #shape = [batch_size, 784]
-        x = self.fc1(x)
+        x = self.conv1(x) 
         x = torch.relu(x)
-        decoded = None
-        if self.training:
-            decoded = self.decoder(x) #shape = [batch_size, 784]
+        x = torch.max_pool2d(x, 2)
+        print(x.shape)
+        x = torch.flatten(x)
         x = self.fc2(x)
-        return x, decoded, features
+        return x
 
 model = SimpleMLP().to(device)
 print(model)
 
 criterion = nn.CrossEntropyLoss()
-recon_criterion = nn.MSELoss()
 optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
 
 def correct(output, target):
@@ -79,12 +72,10 @@ def train(data_loader, model, criterion, optimizer):
         target = target.to(device)
         
         # Do a forward pass
-        output, decoded, features = model(data)
+        output = model(data)
         
         # Calculate the loss
-        task_loss = criterion(output, target)
-        recon_loss = recon_criterion(decoded, features)
-        loss = task_loss + recon_loss
+        loss = criterion(output, target)
         total_loss += loss
 
         # Count number of correct digits
@@ -120,7 +111,7 @@ def test(test_loader, model, criterion):
             target = target.to(device)
         
             # Do a forward pass
-            output, _, _ = model(data)
+            output = model(data)
         
             # Calculate the loss
             loss = criterion(output, target)
@@ -136,14 +127,18 @@ def test(test_loader, model, criterion):
 
 test(test_loader, model, criterion)
 
-W = model.fc1.weight.detach().cpu().numpy()   # (20, 784)
+W = model.conv1.weight.detach().cpu().numpy()   
+n_filters = W.shape[0]
 
 fig, axes = plt.subplots(4, 5, figsize=(10, 8))
 for i, ax in enumerate(axes.flat):
-    filt = W[i].reshape(28, 28)
+    if i >= n_filters:
+        ax.axis('off')
+        continue
+    filt = W[i, 0]                  
     ax.imshow(filt, cmap='seismic',
-              vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())  # symmetric colormap centered at 0
-    ax.set_title(f'neuron {i}')
+              vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())
+    ax.set_title(f'filter {i}')
     ax.axis('off')
 plt.tight_layout()
 plt.show()
