@@ -6,7 +6,6 @@ from torchvision.transforms import ToTensor
 
 import numpy as np
 import matplotlib.pyplot as plt
-import os
 
 print('Using PyTorch version:', torch.__version__)
 if torch.cuda.is_available():
@@ -16,10 +15,10 @@ else:
     print('No GPU found, using CPU instead.') 
     device = torch.device('cpu')
     
-batch_size = 32
+batch_size = 64
 
-slurm_project = os.getenv('SLURM_JOB_ACCOUNT')
-data_dir = os.path.join('/scratch', slurm_project, 'data') if slurm_project else './data'
+
+data_dir = './data'
 print('data_dir =', data_dir)
 
 train_dataset = datasets.MNIST(data_dir, train=True, download=True, transform=ToTensor())
@@ -32,15 +31,6 @@ for (data, target) in train_loader:
     print('data:', data.size(), 'type:', data.type())
     print('target:', target.size(), 'type:', target.type())
     break
-
-pltsize=1
-plt.figure(figsize=(10*pltsize, pltsize))
-
-for i in range(10):
-    plt.subplot(1,10,i+1)
-    plt.axis('off')
-    plt.imshow(data[i,:,:,:].numpy().reshape(28,28), cmap="gray_r")
-    plt.title('Class: '+str(target[i].item()))
 
 class SimpleMLP(nn.Module):
     def __init__(self):
