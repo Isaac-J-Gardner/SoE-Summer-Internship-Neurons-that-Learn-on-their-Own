@@ -19,8 +19,6 @@ class Net(nn.Module):
         self.conv2 = nn.Conv2d(32, 64, 3, 1)#another convolution layer, 32 input channels, 64 output channels, this means the 3x3 kernel is being performed on all 32
                                             #of the previous outputs simultaneously, the kernel is 3x3x32, and we have 64 different learned kernels from this.
                                             #original image is 28*28, then we have 32 26*26 convolved images, then 64 24*24 images = 36,864 outputs, maxpool gives max of 4 pixels = 9216
-        self.dropout1 = nn.Dropout(0.25)#during training, randomly zeroes some of the elements of the input tensor, it forces neurons to be independant 
-        self.dropout2 = nn.Dropout(0.5)#probability of zeroing value is input
         #fully connected layer: standard ANN layers
         self.fc1 = nn.Linear(9216, 128)#9216 from maxpool to 128
         self.fc2 = nn.Linear(128, 10)#128 inputs, 10 outputs (0 through 10), 1 hidden layer of 128 neurons
@@ -31,11 +29,9 @@ class Net(nn.Module):
         x = self.conv2(x) #second convolution
         x = F.relu(x) #non-linearity
         x = F.max_pool2d(x, 2) #split each output image into 2x2 squares, take max value from 2x2 square. goes from 24*24 to 12*12
-        x = self.dropout1(x) #zero 1/4 values randomly, forces neurons to be robust, they can't rely on other neurons providing input, prevent overfitting
         x = torch.flatten(x, 1) #turn into 1 dimensional array of 9216 values to give 1 value to each neuron
         x = self.fc1(x) #first layer
         x = F.relu(x) #non-linearity
-        x = self.dropout2(x) #zero half the outputs
         x = self.fc2(x) #second layer
         output = F.log_softmax(x, dim=1) #log softmax, more negative means less confident in value
         return output
@@ -105,7 +101,6 @@ def run_single(args, device, dataset1, dataset2, lr, seed):
 
     model = Net().to(device)
     optimizer = optim.SGD(model.parameters(), lr=lr)
-    scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
 
     rows = []
     for epoch in range(1, args.epochs + 1):
@@ -119,14 +114,12 @@ def run_single(args, device, dataset1, dataset2, lr, seed):
             'start_lr': lr,
             'seed': seed,
             'epoch': epoch,
-            'epoch_lr': epoch_lr,
             'train_loss': train_loss,
             'test_loss': test_loss,
             'test_correct': correct,
             'test_accuracy': accuracy,
             'epoch_time_sec': elapsed,
         })
-        scheduler.step()
     return rows
 
 
