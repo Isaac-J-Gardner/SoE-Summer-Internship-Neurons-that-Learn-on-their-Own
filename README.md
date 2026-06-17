@@ -1,2 +1,2 @@
 # SoE-Summer-Internship-Neurons-that-Learn-on-their-Own
-This is the code repository for my SoE summer internship at the University of Manchester for the project Neurons that Learn on their Own under the supervision of Dr Davide Bertozzi. The project aims to apply Dr Larry Bulls paper on Neuron Autoencoders to an MNIST CNN and after that, SNNs.
+This is the code repository for my SoE summer internship at the University of Manchester for the project Neurons that Learn on their Own under the supervision of Dr Davide Bertozzi. The project aims to apply Dr Larry Bulls paper on Neuron Autoencoders to an MNIST Neural Network and after that, SNNs.
