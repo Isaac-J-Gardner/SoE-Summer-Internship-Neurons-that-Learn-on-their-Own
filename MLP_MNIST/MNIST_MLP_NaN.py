@@ -20,6 +20,7 @@ batch_size = 64
 data_dir = './data'
 print('data_dir =', data_dir)
 
+
 train_dataset = datasets.MNIST(data_dir, train=True, download=True, transform=ToTensor())
 test_dataset = datasets.MNIST(data_dir, train=False, transform=ToTensor())
 
@@ -31,24 +32,34 @@ for (data, target) in train_loader:
     print('target:', target.size(), 'type:', target.type())
     break
 
+total = torch.zeros(1, 28, 28)
+n = 0
+for images, _ in train_loader:
+    total += images.sum(dim=0)   # sum over the batch
+    n += images.size(0)
+mean_image = nn.Flatten()(total / n)        # shape [1, 28, 28]
+mean_image = mean_image.to(device)
+
 class SimpleMLP(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc1 = nn.Linear(28*28, 20)
+        self.encoder = nn.Linear(28*28, 20)
         self.decoder_weights = nn.Parameter(torch.randn(20, 784) * 0.01)
         self.decoder_bias = nn.Parameter(torch.zeros(20, 784))
-        self.fc2 = nn.Linear(20, 10)
+        self.readout = nn.Linear(20, 10)
 
     def forward(self, x):
         x = nn.Flatten()(x)
+        x -= mean_image
         features = x #shape = [batch_size, 784]
-        x = self.fc1(x)
-        x = torch.relu(x)
+        x = self.encoder(x)
+        x = torch.sigmoid(x)
         decoded = None
         if self.training:
             decoded = x.unsqueeze(2) * self.decoder_weights.unsqueeze(0) + self.decoder_bias.unsqueeze(0) #shape = [batch_size, 20, 784]
-        x = self.fc2(x)
-        return x, decoded, features
+        output = self.readout(x.detach())
+        return output, decoded, features
+
 
 model = SimpleMLP().to(device)
 print(model)
@@ -79,8 +90,8 @@ def train(data_loader, model, criterion, recon_criterion, optimizer):
         output, decoded, features = model(data)
         
         # Calculate the loss
-        loss_type = random.randint(0, 1)
-        if loss_type == 0:
+        cycle = random.randint(0, 1)
+        if cycle == 0:
             loss = criterion(output, target)
         else:
             loss = recon_criterion(decoded, features.unsqueeze(1).expand_as(decoded))
@@ -99,7 +110,7 @@ def train(data_loader, model, criterion, recon_criterion, optimizer):
     accuracy = total_correct/num_items
     print(f"Average loss: {train_loss:7f}, accuracy: {accuracy:.2%}")
 
-epochs = 10
+epochs = 20
 for epoch in range(epochs):
     print(f"Training epoch: {epoch+1}")
     train(train_loader, model, criterion, recon_criterion, optimizer)
@@ -136,7 +147,7 @@ def test(test_loader, model, criterion):
 
 test(test_loader, model, criterion)
 
-W = model.fc1.weight.detach().cpu().numpy()   # (20, 784)
+W = model.encoder.weight.detach().cpu().numpy()   # (20, 784)
 
 fig, axes = plt.subplots(4, 5, figsize=(10, 8))
 for i, ax in enumerate(axes.flat):

@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor
-
+import random
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -32,6 +32,14 @@ for (data, target) in train_loader:
     print('target:', target.size(), 'type:', target.type())
     break
 
+total = torch.zeros(1, 28, 28)
+n = 0
+for images, _ in train_loader:
+    total += images.sum(dim=0)   # sum over the batch
+    n += images.size(0)
+mean_image = total / n     # shape [1, 28, 28]
+mean_image = mean_image.to(device)
+
 class SimpleMLP(nn.Module):
     def __init__(self):
         super().__init__()
@@ -41,6 +49,7 @@ class SimpleMLP(nn.Module):
         self.fc2 = nn.Linear(3380, 10)
 
     def forward(self, x):
+        x -= mean_image
         features = torch.nn.functional.unfold(x, kernel_size=3, stride=1) #extracts 3x3 patches from the input image, stride of 1 means we move 1 pixel at a time, shape is batch, 9, 676
         features = features.view(x.size(0), 3, 3, 26, 26)
         #reshape patches to match decoder weights (26, 26, 3, 3) for each of the 32 output channels
@@ -51,7 +60,7 @@ class SimpleMLP(nn.Module):
         decoded = x.unsqueeze(-1).unsqueeze(-1) * self.conv_decoder_weights.unsqueeze(1).unsqueeze(1) + self.conv_decoder_biases.unsqueeze(1).unsqueeze(1)
         x = torch.max_pool2d(x, 2)
         x = torch.flatten(x, 1)
-        x = self.fc2(x)
+        x = self.fc2(x.detach())
         return x, decoded, features
 
 model = SimpleMLP().to(device)
@@ -83,9 +92,11 @@ def train(data_loader, model, criterion, recon_criterion, optimizer):
         output, decoded, features = model(data)
         
         # Calculate the loss
-        task_loss = criterion(output, target)
-        recon_loss = recon_criterion(decoded, features.unsqueeze(1).expand_as(decoded))
-        loss = task_loss + recon_loss
+        cycle = random.randint(0, 1)
+        if cycle == 0:
+            loss = criterion(output, target)
+        else:
+            loss = recon_criterion(decoded, features.unsqueeze(1).expand_as(decoded))
         total_loss += loss
 
         # Count number of correct digits
@@ -100,7 +111,7 @@ def train(data_loader, model, criterion, recon_criterion, optimizer):
     accuracy = total_correct/num_items
     print(f"Average loss: {train_loss:7f}, accuracy: {accuracy:.2%}")
 
-epochs = 10
+epochs = 20
 for epoch in range(epochs):
     print(f"Training epoch: {epoch+1}")
     train(train_loader, model, criterion, recon_criterion, optimizer)
