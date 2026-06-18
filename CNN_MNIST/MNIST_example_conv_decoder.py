@@ -28,10 +28,7 @@ class Net(nn.Module):
         patches = patches.permute(0, 3, 4, 1, 2) #reorder dimensions to (batch_size, height, width, kernel_height, kernel_width)
         x = self.conv1(x) #first convolution
         x = F.relu(x) #non-linearity
-        x = x #store conv1 output for reconstructionm shape = [batch_size, 32, 26, 26]
-        #each single neurons output needs multiplying by decoder kernel and adding bias giving shape [batch_size, 32, 26, 26, 3, 3]
-        #error can then be computed by subtracting the original patches from the reconstructed patches, and then we can compute the loss as the mean squared error of this difference.
-        
+
         decoded = x.unsqueeze(-1).unsqueeze(-1) * self.conv1_decoder_weights.unsqueeze(1).unsqueeze(1) + self.conv1_decoder_bias.unsqueeze(1).unsqueeze(1)
         
         x = self.conv2(x) #second convolution

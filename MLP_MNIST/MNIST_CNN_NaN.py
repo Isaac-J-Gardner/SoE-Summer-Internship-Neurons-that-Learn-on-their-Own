@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor
-import random
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -16,6 +16,7 @@ else:
     device = torch.device('cpu')
     
 batch_size = 64
+
 
 data_dir = './data'
 print('data_dir =', data_dir)
@@ -34,19 +35,22 @@ for (data, target) in train_loader:
 class SimpleMLP(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc1 = nn.Linear(28*28, 20)
-        self.decoder_weights = nn.Parameter(torch.randn(20, 784) * 0.01)
-        self.decoder_bias = nn.Parameter(torch.zeros(20, 784))
-        self.fc2 = nn.Linear(20, 10)
+        self.conv1 = nn.Conv2d(1, 20, 3, 1) #20 26x26 images = 13,520 outputs, 3380 after maxpool
+        self.conv_decoder_weights = nn.Parameter(torch.randn(20, 3, 3)*0.01)
+        self.conv_decoder_biases = nn.Parameter(torch.zeros(20, 3, 3))
+        self.fc2 = nn.Linear(3380, 10)
 
     def forward(self, x):
-        x = nn.Flatten()(x)
-        features = x #shape = [batch_size, 784]
-        x = self.fc1(x)
+        features = torch.nn.functional.unfold(x, kernel_size=3, stride=1) #extracts 3x3 patches from the input image, stride of 1 means we move 1 pixel at a time, shape is batch, 9, 676
+        features = features.view(x.size(0), 3, 3, 26, 26)
+        #reshape patches to match decoder weights (26, 26, 3, 3) for each of the 32 output channels
+        features = features.permute(0, 3, 4, 1, 2) #reorder dimensions to (batch_size, height, width, kernel_height, kernel_width) aka batch, 26, 26, 3, 3
+        x = self.conv1(x) 
         x = torch.relu(x)
-        decoded = None
-        if self.training:
-            decoded = x.unsqueeze(2) * self.decoder_weights.unsqueeze(0) + self.decoder_bias.unsqueeze(0) #shape = [batch_size, 20, 784]
+        #unsqueeze output from batch, 20, 26, 26 to batch, 20, 26, 26, 1, 1. unsqueeze decoder weights to 20, 1, 1, 3, 3. broadcasting should handle mismatch, same with bias not having batch
+        decoded = x.unsqueeze(-1).unsqueeze(-1) * self.conv_decoder_weights.unsqueeze(1).unsqueeze(1) + self.conv_decoder_biases.unsqueeze(1).unsqueeze(1)
+        x = torch.max_pool2d(x, 2)
+        x = torch.flatten(x, 1)
         x = self.fc2(x)
         return x, decoded, features
 
@@ -79,21 +83,18 @@ def train(data_loader, model, criterion, recon_criterion, optimizer):
         output, decoded, features = model(data)
         
         # Calculate the loss
-        loss_type = random.randint(0, 1)
-        if loss_type == 0:
-            loss = criterion(output, target)
-        else:
-            loss = recon_criterion(decoded, features.unsqueeze(1).expand_as(decoded))
+        task_loss = criterion(output, target)
+        recon_loss = recon_criterion(decoded, features.unsqueeze(1).expand_as(decoded))
+        loss = task_loss + recon_loss
         total_loss += loss
 
         # Count number of correct digits
         total_correct += correct(output, target)
         
         # Backpropagation
-        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        
+        optimizer.zero_grad()
 
     train_loss = total_loss/num_batches
     accuracy = total_correct/num_items
@@ -136,14 +137,18 @@ def test(test_loader, model, criterion):
 
 test(test_loader, model, criterion)
 
-W = model.fc1.weight.detach().cpu().numpy()   # (20, 784)
+W = model.conv1.weight.detach().cpu().numpy()   
+n_filters = W.shape[0]
 
 fig, axes = plt.subplots(4, 5, figsize=(10, 8))
 for i, ax in enumerate(axes.flat):
-    filt = W[i].reshape(28, 28)
+    if i >= n_filters:
+        ax.axis('off')
+        continue
+    filt = W[i, 0]                  
     ax.imshow(filt, cmap='seismic',
-              vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())  # symmetric colormap centered at 0
-    ax.set_title(f'neuron {i}')
+              vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())
+    ax.set_title(f'filter {i}')
     ax.axis('off')
 plt.tight_layout()
 plt.show()

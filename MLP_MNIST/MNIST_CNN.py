@@ -42,8 +42,7 @@ class SimpleMLP(nn.Module):
         x = self.conv1(x) 
         x = torch.relu(x)
         x = torch.max_pool2d(x, 2)
-        print(x.shape)
-        x = torch.flatten(x)
+        x = torch.flatten(x, 1)
         x = self.fc2(x)
         return x
 
@@ -54,8 +53,8 @@ criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
 
 def correct(output, target):
-    predicted_digits = output.argmax(1)                            # pick digit with largest network output
-    correct_ones = (predicted_digits == target).type(torch.float)  # 1.0 for correct, 0.0 for incorrect
+    predicted_digits = output.argmax(1)                            
+    correct_ones = (predicted_digits == target).type(torch.float) 
     return correct_ones.sum().item()          
 
 def train(data_loader, model, criterion, optimizer):
@@ -67,21 +66,16 @@ def train(data_loader, model, criterion, optimizer):
     total_loss = 0
     total_correct = 0
     for data, target in data_loader:
-        # Copy data and targets to GPU
         data = data.to(device)
         target = target.to(device)
         
-        # Do a forward pass
         output = model(data)
         
-        # Calculate the loss
         loss = criterion(output, target)
         total_loss += loss
 
-        # Count number of correct digits
         total_correct += correct(output, target)
-        
-        # Backpropagation
+
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
@@ -106,18 +100,14 @@ def test(test_loader, model, criterion):
 
     with torch.no_grad():
         for data, target in test_loader:
-            # Copy data and targets to GPU
             data = data.to(device)
             target = target.to(device)
         
-            # Do a forward pass
             output = model(data)
         
-            # Calculate the loss
             loss = criterion(output, target)
             test_loss += loss.item()
         
-            # Count number of correct digits
             total_correct += correct(output, target)
 
     test_loss = test_loss/num_batches
