@@ -15,7 +15,7 @@ else:
     print('No GPU found, using CPU instead.') 
     device = torch.device('cpu')
     
-batch_size = 8
+batch_size = 64
 
 data_dir = './data'
 print('data_dir =', data_dir)
@@ -73,7 +73,26 @@ def correct(output, target):
     correct_ones = (predicted_digits == target).type(torch.float)  # 1.0 for correct, 0.0 for incorrect
     return correct_ones.sum().item()          
 
-def train(data_loader, model, criterion, recon_criterion, optimizer):
+def train_recon(data_loader, model, criterion, recon_criterion, optimizer):
+    model.train()
+
+    for data, target in data_loader:
+        # Copy data and targets to GPU
+        data = data.to(device)
+        target = target.to(device)
+        
+        # Do a forward pass
+        _, decoded, features = model(data)
+        
+
+        loss = recon_criterion(decoded, features.unsqueeze(1).expand_as(decoded))
+        
+        # Backpropagation
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+def train_task(data_loader, model, criterion, optimizer):
     model.train()
 
     num_batches = len(data_loader)
@@ -81,6 +100,7 @@ def train(data_loader, model, criterion, recon_criterion, optimizer):
 
     total_loss = 0
     total_correct = 0
+
     for data, target in data_loader:
         # Copy data and targets to GPU
         data = data.to(device)
@@ -88,13 +108,8 @@ def train(data_loader, model, criterion, recon_criterion, optimizer):
         
         # Do a forward pass
         output, decoded, features = model(data)
-        
-        # Calculate the loss
-        cycle = random.randint(0, 1)
-        if cycle == 0:
-            loss = criterion(output, target)
-        else:
-            loss = recon_criterion(decoded, features.unsqueeze(1).expand_as(decoded))
+
+        loss = criterion(decoded, features.unsqueeze(1).expand_as(decoded))
         total_loss += loss
 
         # Count number of correct digits
@@ -110,10 +125,49 @@ def train(data_loader, model, criterion, recon_criterion, optimizer):
     accuracy = total_correct/num_items
     print(f"Average loss: {train_loss:7f}, accuracy: {accuracy:.2%}")
 
-epochs = 20
-for epoch in range(epochs):
-    print(f"Training epoch: {epoch+1}")
-    train(train_loader, model, criterion, recon_criterion, optimizer)
+recon_epochs = 10
+task_epochs = 10
+recon_params = list(model.encoder.parameters()) + [model.decoder_weights, model.decoder_bias]
+task_params  = list(model.readout.parameters())
+
+recon_opt = torch.optim.SGD(recon_params, lr=0.1)
+task_opt  = torch.optim.SGD(task_params,  lr=0.1)
+
+# Phase 1: reconstruction only
+for epoch in range(recon_epochs):
+    print("epoch:", recon_epochs)
+    for data, target in train_loader:
+        data = data.to(device)
+        _, decoded, features = model(data)
+        recon_loss = recon_criterion(decoded, features.unsqueeze(1).expand_as(decoded))
+        recon_opt.zero_grad()
+        recon_loss.backward()
+        recon_opt.step()
+
+    #Phase 2: task only — recon params are not in task_opt, so they don't move
+    
+for epoch in range(task_epochs):
+    num_batches = len(test_loader)
+    num_items = len(test_loader.dataset)
+
+    test_loss = 0
+    
+    total_correct = 0
+    for data, target in train_loader:
+        data = data.to(device)
+        target = target.to(device)
+        output, _, _ = model(data)
+        task_loss = criterion(output, target)
+        task_opt.zero_grad()
+        task_loss.backward()
+        task_opt.step()
+    
+    test_loss = test_loss/num_batches
+    accuracy = total_correct/num_items
+
+    print(f"Testset accuracy: {100*accuracy:>0.1f}%, average loss: {test_loss:>7f}")
+        
+        
 
 def test(test_loader, model, criterion):
     model.eval()
@@ -145,13 +199,35 @@ def test(test_loader, model, criterion):
 
     print(f"Testset accuracy: {100*accuracy:>0.1f}%, average loss: {test_loss:>7f}")
 
-test(test_loader, model, criterion)
+#test(test_loader, model, criterion)
 
 W = model.encoder.weight.detach().cpu().numpy()   # (20, 784)
+W2 = model.decoder_weights.detach().cpu().numpy()
+W3 = model.decoder_bias.detach().cpu().numpy()
 
 fig, axes = plt.subplots(4, 5, figsize=(10, 8))
 for i, ax in enumerate(axes.flat):
     filt = W[i].reshape(28, 28)
+    ax.imshow(filt, cmap='seismic',
+              vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())  # symmetric colormap centered at 0
+    ax.set_title(f'neuron {i}')
+    ax.axis('off')
+plt.tight_layout()
+plt.show()
+
+fig, axes = plt.subplots(4, 5, figsize=(10, 8))
+for i, ax in enumerate(axes.flat):
+    filt = W2[i].reshape(28, 28)
+    ax.imshow(filt, cmap='seismic',
+              vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())  # symmetric colormap centered at 0
+    ax.set_title(f'neuron {i}')
+    ax.axis('off')
+plt.tight_layout()
+plt.show()
+
+fig, axes = plt.subplots(4, 5, figsize=(10, 8))
+for i, ax in enumerate(axes.flat):
+    filt = W3[i].reshape(28, 28)
     ax.imshow(filt, cmap='seismic',
               vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())  # symmetric colormap centered at 0
     ax.set_title(f'neuron {i}')
