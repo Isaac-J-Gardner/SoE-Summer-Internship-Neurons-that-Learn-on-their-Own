@@ -1,0 +1,63 @@
+Baseline (random init, before training):
+  [epoch 0] probe=66.93%  erank=18.47/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 1
+Average loss: 1.224119, accuracy: 12.19%
+  [epoch 1] probe=66.98%  erank=18.47/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 2
+Average loss: 1.166517, accuracy: 20.63%
+  [epoch 2] probe=66.96%  erank=18.47/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 3
+Average loss: 1.124485, accuracy: 25.65%
+  [epoch 3] probe=67.02%  erank=18.47/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 4
+Average loss: 1.152964, accuracy: 31.89%
+  [epoch 4] probe=67.08%  erank=18.47/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 5
+Average loss: 1.157394, accuracy: 33.62%
+  [epoch 5] probe=67.11%  erank=18.46/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 6
+Average loss: 1.121473, accuracy: 37.03%
+  [epoch 6] probe=67.13%  erank=18.46/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 7
+Average loss: 1.124356, accuracy: 39.94%
+  [epoch 7] probe=67.19%  erank=18.46/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 8
+Average loss: 1.131369, accuracy: 40.87%
+  [epoch 8] probe=67.24%  erank=18.46/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 9
+Average loss: 1.090944, accuracy: 43.42%
+  [epoch 9] probe=67.28%  erank=18.46/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 10
+Average loss: 1.107185, accuracy: 43.94%
+  [epoch 10] probe=67.33%  erank=18.46/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 11
+Average loss: 1.079954, accuracy: 45.06%
+  [epoch 11] probe=67.37%  erank=18.46/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 12
+Average loss: 1.046779, accuracy: 46.93%
+  [epoch 12] probe=67.42%  erank=18.45/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 13
+Average loss: 1.124196, accuracy: 46.64%
+  [epoch 13] probe=67.44%  erank=18.45/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 14
+Average loss: 1.002718, accuracy: 47.47%
+  [epoch 14] probe=67.48%  erank=18.45/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 15
+Average loss: 1.058985, accuracy: 48.51%
+  [epoch 15] probe=67.49%  erank=18.45/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 16
+Average loss: 0.989524, accuracy: 48.20%
+  [epoch 16] probe=67.52%  erank=18.45/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 17
+Average loss: 0.978376, accuracy: 48.93%
+  [epoch 17] probe=67.53%  erank=18.45/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 18
+Average loss: 1.011832, accuracy: 49.96%
+  [epoch 18] probe=67.58%  erank=18.44/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 19
+Average loss: 0.956039, accuracy: 50.52%
+  [epoch 19] probe=67.62%  erank=18.44/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Training epoch: 20
+Average loss: 0.967241, accuracy: 51.14%
+  [epoch 20] probe=67.70%  erank=18.44/20  |corr|=0.15  latent_contrib=0.00%  |W|mean=0.578  full/abl MSE=0.0675/0.0675
+Testset accuracy: 54.5%, average loss: 1.913355
