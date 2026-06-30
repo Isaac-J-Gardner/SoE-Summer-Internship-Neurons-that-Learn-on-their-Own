@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor
-
+import random
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -31,9 +31,6 @@ for (data, target) in train_loader:
     print('data:', data.size(), 'type:', data.type())
     print('target:', target.size(), 'type:', target.type())
     break
-
-pltsize=1
-plt.figure(figsize=(10*pltsize, pltsize))
 
 class SimpleMLP(nn.Module):
     def __init__(self):
@@ -82,18 +79,21 @@ def train(data_loader, model, criterion, optimizer):
         output, decoded, features = model(data)
         
         # Calculate the loss
-        task_loss = criterion(output, target)
-        recon_loss = recon_criterion(decoded, features)
-        loss = task_loss + recon_loss
+        cycle = random.randint(0, 1)
+        if cycle == 0:
+            loss = criterion(output, target)
+        else:
+            loss = recon_criterion(decoded, features)
         total_loss += loss
 
         # Count number of correct digits
         total_correct += correct(output, target)
         
         # Backpropagation
+        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        optimizer.zero_grad()
+        
 
     train_loss = total_loss/num_batches
     accuracy = total_correct/num_items
@@ -137,15 +137,14 @@ def test(test_loader, model, criterion):
 test(test_loader, model, criterion)
 
 W = model.encoder.weight.detach().cpu().numpy()   # (20, 784)
-W2 = model.decoder.weights.detach().cpu().numpy()
+W2 = model.decoder.weight.detach().cpu().numpy()
 W3 = model.decoder.bias.detach().cpu().numpy()
+
+W2 = np.transpose(W2, (1,0))
 
 encoder_mean = np.mean(abs(W))
 decoder_mean = np.mean(abs(W2))
-print(encoder_mean)
 
-print(decoder_mean)
-print(W3)
 
 fig, axes = plt.subplots(4, 5, figsize=(10, 8))
 for i, ax in enumerate(axes.flat):
@@ -160,6 +159,16 @@ plt.show()
 fig, axes = plt.subplots(4, 5, figsize=(10, 8))
 for i, ax in enumerate(axes.flat):
     filt = W2[i].reshape(28, 28)
+    ax.imshow(filt, cmap='seismic',
+              vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())  # symmetric colormap centered at 0
+    ax.set_title(f'neuron {i}')
+    ax.axis('off')
+plt.tight_layout()
+plt.show()
+
+fig, axes = plt.subplots(1, 1, figsize=(10, 8))
+for i, ax in enumerate(axes.flat):
+    filt = W3.reshape(28, 28)
     ax.imshow(filt, cmap='seismic',
               vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())  # symmetric colormap centered at 0
     ax.set_title(f'neuron {i}')

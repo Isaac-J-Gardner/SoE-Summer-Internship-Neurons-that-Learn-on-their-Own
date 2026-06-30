@@ -50,7 +50,7 @@ class SimpleMLP(nn.Module):
 
     def forward(self, x):
         x = nn.Flatten()(x)
-        x -= mean_image
+        x = x - mean_image
         features = x #shape = [batch_size, 784]
         x = self.encoder(x)
         x = torch.sigmoid(x)
