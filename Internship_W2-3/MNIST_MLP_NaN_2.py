@@ -67,6 +67,7 @@ print(model)
 criterion = nn.CrossEntropyLoss()
 recon_criterion = nn.MSELoss()
 optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+recon_optimiser = torch.optim.SGD(model.parameters(), lr=50)
 
 def correct(output, target):
     predicted_digits = output.argmax(1)                            # pick digit with largest network output
@@ -93,17 +94,22 @@ def train(data_loader, model, criterion, recon_criterion, optimizer):
         cycle = random.randint(0, 1)
         if cycle == 0:
             loss = criterion(output, target)
+            # Backpropagation
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
         else:
             loss = recon_criterion(decoded, features.unsqueeze(1).expand_as(decoded))
+            recon_optimiser.zero_grad()
+            loss.backward()
+            recon_optimiser.step()
+
         total_loss += loss
 
         # Count number of correct digits
         total_correct += correct(output, target)
         
-        # Backpropagation
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        
         
 
     train_loss = total_loss/num_batches

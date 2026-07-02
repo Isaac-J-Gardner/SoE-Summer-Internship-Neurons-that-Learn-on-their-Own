@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor
-import random
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -20,7 +20,6 @@ batch_size = 64
 data_dir = './data'
 print('data_dir =', data_dir)
 
-
 train_dataset = datasets.MNIST(data_dir, train=True, download=True, transform=ToTensor())
 test_dataset = datasets.MNIST(data_dir, train=False, transform=ToTensor())
 
@@ -32,71 +31,28 @@ for (data, target) in train_loader:
     print('target:', target.size(), 'type:', target.type())
     break
 
-total = torch.zeros(1, 28, 28)
-n = 0
-for images, _ in train_loader:
-    total += images.sum(dim=0)   # sum over the batch
-    n += images.size(0)
-mean_image = nn.Flatten()(total / n)        # shape [1, 28, 28]
-mean_image = mean_image.to(device)
-
 class SimpleMLP(nn.Module):
     def __init__(self):
         super().__init__()
-        self.encoder = nn.Linear(28*28, 20)
-        self.decoder_weights = nn.Parameter(torch.randn(20, 784) * 0.01)
-        self.decoder_bias = nn.Parameter(torch.zeros(20, 784))
-        self.readout = nn.Linear(20, 10)
+        self.fc1 = nn.Linear(28*28, 10)
 
     def forward(self, x):
         x = nn.Flatten()(x)
-        features = x #shape = [batch_size, 784]
-        x = self.encoder(x)
-        x = torch.sigmoid(x)
-        decoded = None
-        if self.training:
-            decoded = x.unsqueeze(2) * self.decoder_weights.unsqueeze(0) + self.decoder_bias.unsqueeze(0) #shape = [batch_size, 20, 784]
-        output = self.readout(x.detach())
-        return output, decoded, features
-
+        x = self.fc1(x)
+        return x
 
 model = SimpleMLP().to(device)
 print(model)
 
 criterion = nn.CrossEntropyLoss()
-recon_criterion = nn.MSELoss()
-optimizer_recon = torch.optim.SGD(model.parameters(), lr=0.01)
-optimizer_task = torch.optim.SGD(model.parameters(), lr=0.1)
+optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
 
 def correct(output, target):
     predicted_digits = output.argmax(1)                            # pick digit with largest network output
     correct_ones = (predicted_digits == target).type(torch.float)  # 1.0 for correct, 0.0 for incorrect
     return correct_ones.sum().item()          
 
-def train_recon(data_loader, model, recon_criterion, optimizer):
-    model.train()
-    num_batches = len(data_loader)
-    total_loss = 0
-    for data, target in data_loader:
-        # Copy data and targets to GPU
-        data = data.to(device)
-        target = target.to(device)
-        
-        # Do a forward pass
-        _, decoded, features = model(data)
-        
-
-        loss = recon_criterion(decoded, features.unsqueeze(1).expand_as(decoded))
-        total_loss += loss
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-    
-    train_loss = total_loss/num_batches
-    print(f"Average loss: {train_loss:7f}")
-        
-
-def train_task(data_loader, model, criterion, optimizer):
+def train(data_loader, model, criterion, optimizer):
     model.train()
 
     num_batches = len(data_loader)
@@ -110,9 +66,9 @@ def train_task(data_loader, model, criterion, optimizer):
         target = target.to(device)
         
         # Do a forward pass
-        output, _, _ = model(data)
+        output = model(data)
         
-
+        # Calculate the loss
         loss = criterion(output, target)
         total_loss += loss
 
@@ -120,10 +76,9 @@ def train_task(data_loader, model, criterion, optimizer):
         total_correct += correct(output, target)
         
         # Backpropagation
-        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        
+        optimizer.zero_grad()
 
     train_loss = total_loss/num_batches
     accuracy = total_correct/num_items
@@ -131,11 +86,8 @@ def train_task(data_loader, model, criterion, optimizer):
 
 epochs = 10
 for epoch in range(epochs):
-    print(f"Recon epoch: {epoch+1}")
-    train_recon(train_loader, model, recon_criterion, optimizer_recon)
-for epoch in range(epochs):
-    print(f"Task epoch: {epoch+1}")
-    train_task(train_loader, model, criterion, optimizer_task)
+    print(f"Training epoch: {epoch+1}")
+    train(train_loader, model, criterion, optimizer)
 
 def test(test_loader, model, criterion):
     model.eval()
@@ -153,7 +105,7 @@ def test(test_loader, model, criterion):
             target = target.to(device)
         
             # Do a forward pass
-            output, _, _ = model(data)
+            output = model(data)
         
             # Calculate the loss
             loss = criterion(output, target)
@@ -169,44 +121,18 @@ def test(test_loader, model, criterion):
 
 test(test_loader, model, criterion)
 
-W = model.encoder.weight.detach().cpu().numpy()   # (20, 784)
-W2 = model.decoder_weights.detach().cpu().numpy()
-W3 = model.decoder_bias.detach().cpu().numpy()
-
-encoder_mean = np.mean(abs(W))
-decoder_mean = np.mean(abs(W2))
-bias_mean = np.mean(abs(W3))
-print(encoder_mean)
-
-print(decoder_mean)
-print(bias_mean)
+W = model.fc1.weight.detach().cpu().numpy()   # (20, 784)
 
 fig, axes = plt.subplots(4, 5, figsize=(10, 8))
+sum = 0
 for i, ax in enumerate(axes.flat):
     filt = W[i].reshape(28, 28)
+    sum += np.abs(filt).max()
     ax.imshow(filt, cmap='seismic',
-              vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())  # symmetric colormap centered at 0
-    ax.set_title(f'neuron {i}')
-    ax.axis('off')
-plt.tight_layout()
-plt.show()
+        vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())  # symmetric colormap centered at 0
 
-fig, axes = plt.subplots(4, 5, figsize=(10, 8))
-for i, ax in enumerate(axes.flat):
-    filt = W2[i].reshape(28, 28)
-    ax.imshow(filt, cmap='seismic',
-              vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())  # symmetric colormap centered at 0
     ax.set_title(f'neuron {i}')
     ax.axis('off')
-plt.tight_layout()
-plt.show()
-
-fig, axes = plt.subplots(4, 5, figsize=(10, 8))
-for i, ax in enumerate(axes.flat):
-    filt = W3[i].reshape(28, 28)
-    ax.imshow(filt, cmap='seismic',
-              vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())  # symmetric colormap centered at 0
-    ax.set_title(f'neuron {i}')
-    ax.axis('off')
+print("average mag: ", sum/20)
 plt.tight_layout()
 plt.show()

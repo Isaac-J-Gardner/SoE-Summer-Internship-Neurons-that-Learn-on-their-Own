@@ -37,7 +37,6 @@ class SimpleMLP(nn.Module):
         super().__init__()
         self.encoder = nn.Linear(28*28, 20)
         self.decoder = nn.Linear(20, 784)
-        self.readout = nn.Linear(20, 10)
 
     def forward(self, x):
         x = nn.Flatten()(x)
@@ -45,21 +44,13 @@ class SimpleMLP(nn.Module):
         x = self.encoder(x)
         x = torch.relu(x)
         decoded = self.decoder(x) #shape = [batch_size, 784
-        output = self.readout(x)
-        return decoded, features, output
+        return decoded, features
 
 model = SimpleMLP().to(device)
 print(model)
 
-criterion = nn.CrossEntropyLoss()
-recon_criterion = nn.MSELoss()
-recon_optimizer = torch.optim.SGD(model.parameters(), lr=1.2)
-task_optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
-
-def correct(output, target):
-    predicted_digits = output.argmax(1)                            # pick digit with largest network output
-    correct_ones = (predicted_digits == target).type(torch.float)  # 1.0 for correct, 0.0 for incorrect
-    return correct_ones.sum().item()          
+criterion = nn.MSELoss()
+optimizer = torch.optim.SGD(model.parameters(), lr=1)
 
 def train(data_loader, model, criterion, optimizer):
     model.train()
@@ -68,32 +59,26 @@ def train(data_loader, model, criterion, optimizer):
     num_items = len(data_loader.dataset)
 
     total_loss = 0
-    total_correct = 0
     for data, target in data_loader:
         # Copy data and targets to GPU
         data = data.to(device)
         target = target.to(device)
         
         # Do a forward pass
-        output, decoded, features = model(data)
+        decoded, features = model(data)
         
-        # Calculate the loss
-        task_loss = criterion(output, target)
-        recon_loss = recon_criterion(decoded, features)
-        loss = task_loss + recon_loss
-        total_loss += loss
+        loss = criterion(decoded, features)
 
-        # Count number of correct digits
-        total_correct += correct(output, target)
+        total_loss += loss
         
         # Backpropagation
+        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        optimizer.zero_grad()
+        
 
     train_loss = total_loss/num_batches
-    accuracy = total_correct/num_items
-    print(f"Average loss: {train_loss:7f}, accuracy: {accuracy:.2%}")
+    print(f"Average loss: {train_loss:7f}")
 
 epochs = 50
 for epoch in range(epochs):
