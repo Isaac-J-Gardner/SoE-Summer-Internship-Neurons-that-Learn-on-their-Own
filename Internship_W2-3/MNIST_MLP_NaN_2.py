@@ -44,13 +44,12 @@ class SimpleMLP(nn.Module):
     def __init__(self):
         super().__init__()
         self.encoder = nn.Linear(28*28, 20)
-        self.decoder_weights = nn.Parameter(torch.randn(20, 784) * 0.1)
+        self.decoder_weights = nn.Parameter(torch.randn(20, 784) * 0.5)
         self.decoder_bias = nn.Parameter(torch.zeros(20, 784))
         self.readout = nn.Linear(20, 10)
 
     def forward(self, x):
         x = nn.Flatten()(x)
-        x = x - mean_image
         features = x #shape = [batch_size, 784]
         x = self.encoder(x)
         x = torch.sigmoid(x)
@@ -67,7 +66,7 @@ print(model)
 criterion = nn.CrossEntropyLoss()
 recon_criterion = nn.MSELoss()
 optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
-recon_optimiser = torch.optim.SGD(model.parameters(), lr=50)
+recon_optimiser = torch.optim.SGD(model.parameters(), lr=0.01)
 
 def correct(output, target):
     predicted_digits = output.argmax(1)                            # pick digit with largest network output
@@ -80,7 +79,8 @@ def train(data_loader, model, criterion, recon_criterion, optimizer):
     num_batches = len(data_loader)
     num_items = len(data_loader.dataset)
 
-    total_loss = 0
+    total_task_loss = 0
+    total_recon_loss = 0
     total_correct = 0
     for data, target in data_loader:
         # Copy data and targets to GPU
@@ -91,30 +91,29 @@ def train(data_loader, model, criterion, recon_criterion, optimizer):
         output, decoded, features = model(data)
         
         # Calculate the loss
-        cycle = random.randint(0, 1)
-        if cycle == 0:
-            loss = criterion(output, target)
+        task_loss = criterion(output, target)
             # Backpropagation
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-        else:
-            loss = recon_criterion(decoded, features.unsqueeze(1).expand_as(decoded))
-            recon_optimiser.zero_grad()
-            loss.backward()
-            recon_optimiser.step()
+        optimizer.zero_grad()
+        task_loss.backward()
+        optimizer.step()
 
-        total_loss += loss
+        recon_loss = recon_criterion(decoded, features.unsqueeze(1).expand_as(decoded))
+        recon_optimiser.zero_grad()
+        recon_loss.backward()
+        recon_optimiser.step()
+
+        total_recon_loss += recon_loss
+        total_task_loss += task_loss
 
         # Count number of correct digits
         total_correct += correct(output, target)
         
-        
-        
 
-    train_loss = total_loss/num_batches
+
+    train_task_loss = total_task_loss/num_batches
+    train_recon_loss = total_recon_loss/num_batches
     accuracy = total_correct/num_items
-    print(f"Average loss: {train_loss:7f}, accuracy: {accuracy:.2%}")
+    print(f"Average task loss: {train_task_loss:7f}, Average recon loss: {train_recon_loss:7f}, accuracy: {accuracy:.2%}")
 
 epochs = 10
 for epoch in range(epochs):

@@ -35,7 +35,7 @@ for (data, target) in train_loader:
 class SimpleMLP(nn.Module):
     def __init__(self):
         super().__init__()
-        self.encoder = nn.Linear(28*28, 20)
+        self.encoder = nn.Linear(784, 20)
         self.decoder = nn.Linear(20, 784)
         self.readout = nn.Linear(20, 10)
 
@@ -44,17 +44,17 @@ class SimpleMLP(nn.Module):
         features = x #shape = [batch_size, 784]
         x = self.encoder(x)
         x = torch.relu(x)
-        decoded = self.decoder(x) #shape = [batch_size, 784
-        output = self.readout(x)
+        decoded = self.decoder(x) #shape = [batch_size, 784]
+        output = self.readout(x.detach())
         return decoded, features, output
 
 model = SimpleMLP().to(device)
 print(model)
+recon_scaler = 13
 
 criterion = nn.CrossEntropyLoss()
 recon_criterion = nn.MSELoss()
-recon_optimizer = torch.optim.SGD(model.parameters(), lr=1.2)
-task_optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
 
 def correct(output, target):
     predicted_digits = output.argmax(1)                            # pick digit with largest network output
@@ -67,7 +67,8 @@ def train(data_loader, model, criterion, optimizer):
     num_batches = len(data_loader)
     num_items = len(data_loader.dataset)
 
-    total_loss = 0
+    total_task_loss = 0
+    total_recon_loss = 0
     total_correct = 0
     for data, target in data_loader:
         # Copy data and targets to GPU
@@ -75,13 +76,14 @@ def train(data_loader, model, criterion, optimizer):
         target = target.to(device)
         
         # Do a forward pass
-        output, decoded, features = model(data)
+        decoded, features, output = model(data)
         
         # Calculate the loss
         task_loss = criterion(output, target)
         recon_loss = recon_criterion(decoded, features)
-        loss = task_loss + recon_loss
-        total_loss += loss
+        total_recon_loss += recon_loss
+        total_task_loss += task_loss
+        loss = task_loss + recon_scaler * recon_loss
 
         # Count number of correct digits
         total_correct += correct(output, target)
@@ -91,11 +93,12 @@ def train(data_loader, model, criterion, optimizer):
         optimizer.step()
         optimizer.zero_grad()
 
-    train_loss = total_loss/num_batches
+    train_task_loss = total_task_loss/num_batches
+    train_recon_loss = total_recon_loss/num_batches
     accuracy = total_correct/num_items
-    print(f"Average loss: {train_loss:7f}, accuracy: {accuracy:.2%}")
+    print(f"Average task loss: {train_task_loss:7f}, Average recon loss: {train_recon_loss:7f}, accuracy: {accuracy:.2%}")
 
-epochs = 50
+epochs = 20
 for epoch in range(epochs):
     print(f"Training epoch: {epoch+1}")
     train(train_loader, model, criterion, optimizer)
