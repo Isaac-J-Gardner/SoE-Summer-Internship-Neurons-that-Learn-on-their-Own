@@ -33,7 +33,6 @@ for (data, target) in train_loader:
     break
 
 total = torch.zeros(1, 28, 28)
-torch.manual_seed(0)
 n = 0
 for images, _ in train_loader:
     total += images.sum(dim=0)   # sum over the batch
@@ -47,32 +46,21 @@ class SimpleMLP(nn.Module):
         self.encoder = nn.Linear(28*28, 20)
         self.decoder_weights = nn.Parameter(torch.randn(20, 784) * 0.01)
         self.decoder_bias = nn.Parameter(torch.zeros(20, 784))
-        self.readout = nn.Linear(20, 10)
 
     def forward(self, x):
         x = nn.Flatten()(x)
         features = x #shape = [batch_size, 784]
         x = self.encoder(x)
         x = torch.sigmoid(x)
-        decoded = None
-        if self.training:
-            decoded = x.unsqueeze(2) * self.decoder_weights.unsqueeze(0) + self.decoder_bias.unsqueeze(0) #shape = [batch_size, 20, 784]
-        output = self.readout(x.detach())
-        return output, decoded, features
+        decoded = x.unsqueeze(2) * self.decoder_weights.unsqueeze(0) + self.decoder_bias.unsqueeze(0) #shape = [batch_size, 20, 784]
+        return decoded, features
 
 
 model = SimpleMLP().to(device)
 print(model)
 
-criterion = nn.CrossEntropyLoss()
 recon_criterion = nn.MSELoss()
-optimizer_recon = torch.optim.SGD(model.parameters(), lr=100)
-optimizer_task = torch.optim.SGD(model.parameters(), lr=0.1)
-
-def correct(output, target):
-    predicted_digits = output.argmax(1)                            # pick digit with largest network output
-    correct_ones = (predicted_digits == target).type(torch.float)  # 1.0 for correct, 0.0 for incorrect
-    return correct_ones.sum().item()          
+optimizer_recon = torch.optim.SGD(model.parameters(), lr=0.000001)
 
 def train_recon(data_loader, model, recon_criterion, optimizer):
     model.train()
@@ -84,7 +72,7 @@ def train_recon(data_loader, model, recon_criterion, optimizer):
         target = target.to(device)
         
         # Do a forward pass
-        _, decoded, features = model(data)
+        decoded, features = model(data)
         
 
         loss = recon_criterion(decoded, features.unsqueeze(1).expand_as(decoded))
@@ -95,78 +83,11 @@ def train_recon(data_loader, model, recon_criterion, optimizer):
     
     train_loss = total_loss/num_batches
     print(f"Average loss: {train_loss:7f}")
-        
-
-def train_task(data_loader, model, criterion, optimizer):
-    model.train()
-
-    num_batches = len(data_loader)
-    num_items = len(data_loader.dataset)
-
-    total_loss = 0
-    total_correct = 0
-    for data, target in data_loader:
-        # Copy data and targets to GPU
-        data = data.to(device)
-        target = target.to(device)
-        
-        # Do a forward pass
-        output, _, _ = model(data)
-        
-
-        loss = criterion(output, target)
-        total_loss += loss
-
-        # Count number of correct digits
-        total_correct += correct(output, target)
-        
-        # Backpropagation
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        
-
-    train_loss = total_loss/num_batches
-    accuracy = total_correct/num_items
-    print(f"Average loss: {train_loss:7f}, accuracy: {accuracy:.2%}")
 
 epochs = 25
 for epoch in range(epochs):
-    print(f"Task epoch: {epoch+1}")
+    print(f"Recon epoch: {epoch+1}")
     train_recon(train_loader, model, recon_criterion, optimizer_recon)
-
-
-def test(test_loader, model, criterion):
-    model.eval()
-
-    num_batches = len(test_loader)
-    num_items = len(test_loader.dataset)
-
-    test_loss = 0
-    total_correct = 0
-
-    with torch.no_grad():
-        for data, target in test_loader:
-            # Copy data and targets to GPU
-            data = data.to(device)
-            target = target.to(device)
-        
-            # Do a forward pass
-            output, _, _ = model(data)
-        
-            # Calculate the loss
-            loss = criterion(output, target)
-            test_loss += loss.item()
-        
-            # Count number of correct digits
-            total_correct += correct(output, target)
-
-    test_loss = test_loss/num_batches
-    accuracy = total_correct/num_items
-
-    print(f"Testset accuracy: {100*accuracy:>0.1f}%, average loss: {test_loss:>7f}")
-
-test(test_loader, model, criterion)
 
 W = model.encoder.weight.detach().cpu().numpy()   # (20, 784)
 W2 = model.decoder_weights.detach().cpu().numpy()

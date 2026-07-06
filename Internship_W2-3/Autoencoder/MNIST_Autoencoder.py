@@ -50,7 +50,7 @@ model = SimpleMLP().to(device)
 print(model)
 
 criterion = nn.MSELoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=1)
+optimizer = torch.optim.SGD(model.parameters(), lr=50)
 
 def train(data_loader, model, criterion, optimizer):
     model.train()

@@ -39,9 +39,15 @@ for images, _ in train_loader:
     n += images.size(0)
 mean_image = (total / n)        # shape [1, 28, 28]
 
+new_total = torch.zeros(1, 28, 28)
+n = 0
+for images, _ in train_loader:
+    total += (images-mean_image).sum(dim=0)
+    n += images.size(0)
+new_mean = (new_total/n)
 
 fig, axes = plt.subplots(1, 1, figsize=(10, 8))
-filt = mean_image.reshape(28, 28)
+filt = new_mean.reshape(28, 28)
 axes.imshow(filt, cmap='seismic',
               vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())  # symmetric colormap centered at 0
 axes.set_title(f'MNIST Mean')
