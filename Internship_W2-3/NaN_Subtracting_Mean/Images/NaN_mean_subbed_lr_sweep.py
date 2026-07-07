@@ -24,6 +24,14 @@ data_dir = './data'
 train_dataset = datasets.MNIST(data_dir, train=True, download=True, transform=ToTensor())
 train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
 
+total = torch.zeros(1, 28, 28)
+n = 0
+for images, _ in train_loader:
+    total += images.sum(dim=0)   # sum over the batch
+    n += images.size(0)
+mean_image = nn.Flatten()(total / n)        # shape [1, 28, 28]
+mean_image = mean_image.to(device)
+
 
 class NeuronAutoencoder(nn.Module):
     """Each of the n_neurons is its own autoencoder: its scalar activation is
@@ -37,6 +45,7 @@ class NeuronAutoencoder(nn.Module):
 
     def forward(self, x):
         x = nn.Flatten()(x)
+        x = x - mean_image
         features = x                                        # [batch, 784]
         h = torch.sigmoid(self.encoder(x))                  # [batch, 20]  one latent per neuron
         # neuron i reconstructs the input as  h_i * decoder_weights[i] + decoder_bias[i]
@@ -81,7 +90,7 @@ def save_grid(mat, path, title_prefix='neuron'):
 # ---------------------------------------------------------------------------
 # Learning-rate sweep: 20 values, log-spaced from 0.001 to 10
 # ---------------------------------------------------------------------------
-learning_rates = np.logspace(1, 4, 15)   # [0.001, ..., 10]
+learning_rates = np.logspace(-3, 3, 30)   # [0.001, ..., 10]
 final_losses = []
 enc_weight_mag = []   # mean(|encoder weight|) per lr
 dec_weight_mag = []   # mean(|decoder weight|) per lr

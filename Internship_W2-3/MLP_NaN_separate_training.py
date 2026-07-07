@@ -15,7 +15,7 @@ else:
     print('No GPU found, using CPU instead.') 
     device = torch.device('cpu')
     
-batch_size = 64
+batch_size = 8
 
 data_dir = './data'
 print('data_dir =', data_dir)
@@ -66,8 +66,8 @@ print(model)
 
 criterion = nn.CrossEntropyLoss()
 recon_criterion = nn.MSELoss()
-optimizer_recon = torch.optim.SGD(model.parameters(), lr=100)
-optimizer_task = torch.optim.SGD(model.parameters(), lr=0.1)
+optimizer_recon = torch.optim.SGD(model.parameters(), lr=10000)
+optimizer_task = torch.optim.SGD(model.parameters(), lr=0.01)
 
 def correct(output, target):
     predicted_digits = output.argmax(1)                            # pick digit with largest network output
@@ -132,7 +132,7 @@ def train_task(data_loader, model, criterion, optimizer):
 
 epochs = 25
 for epoch in range(epochs):
-    print(f"Task epoch: {epoch+1}")
+    print(f"Recon epoch: {epoch+1}")
     train_recon(train_loader, model, recon_criterion, optimizer_recon)
 
 
