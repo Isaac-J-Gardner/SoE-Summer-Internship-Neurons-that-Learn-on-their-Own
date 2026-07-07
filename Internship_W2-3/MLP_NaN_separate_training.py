@@ -66,7 +66,7 @@ print(model)
 
 criterion = nn.CrossEntropyLoss()
 recon_criterion = nn.MSELoss()
-optimizer_recon = torch.optim.SGD(model.parameters(), lr=10000)
+optimizer_recon = torch.optim.SGD(model.parameters(), lr=100)
 optimizer_task = torch.optim.SGD(model.parameters(), lr=0.01)
 
 def correct(output, target):
@@ -132,8 +132,8 @@ def train_task(data_loader, model, criterion, optimizer):
 
 epochs = 25
 for epoch in range(epochs):
-    print(f"Recon epoch: {epoch+1}")
-    train_recon(train_loader, model, recon_criterion, optimizer_recon)
+    print(f"task epoch: {epoch+1}")
+    train_task(train_loader, model, criterion, optimizer_task)
 
 
 def test(test_loader, model, criterion):
