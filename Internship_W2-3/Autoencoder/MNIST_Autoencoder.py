@@ -17,7 +17,6 @@ else:
     
 batch_size = 64
 
-
 data_dir = './data'
 print('data_dir =', data_dir)
 
@@ -35,7 +34,7 @@ for (data, target) in train_loader:
 class SimpleMLP(nn.Module):
     def __init__(self):
         super().__init__()
-        self.encoder = nn.Linear(28*28, 20)
+        self.encoder = nn.Linear(28*28, 20) #standard autoencoder, 20 hidden neurons, all neurons fully connected to an output the same shape as the input.
         self.decoder = nn.Linear(20, 784)
 
     def forward(self, x):
@@ -43,20 +42,19 @@ class SimpleMLP(nn.Module):
         features = x #shape = [batch_size, 784]
         x = self.encoder(x)
         x = torch.relu(x)
-        decoded = self.decoder(x) #shape = [batch_size, 784
+        decoded = self.decoder(x) #shape = [batch_size, 784]
         return decoded, features
 
 model = SimpleMLP().to(device)
 print(model)
 
 criterion = nn.MSELoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=50)
+optimizer = torch.optim.SGD(model.parameters(), lr=50) #trying to keep the learning as simple as possible means I can better attribute results to a more general case.
 
 def train(data_loader, model, criterion, optimizer):
     model.train()
 
     num_batches = len(data_loader)
-    num_items = len(data_loader.dataset)
 
     total_loss = 0
     for data, target in data_loader:
@@ -69,7 +67,7 @@ def train(data_loader, model, criterion, optimizer):
         
         loss = criterion(decoded, features)
 
-        total_loss += loss
+        total_loss += loss.item()
         
         # Backpropagation
         optimizer.zero_grad()
@@ -85,13 +83,13 @@ for epoch in range(epochs):
     print(f"Training epoch: {epoch+1}")
     train(train_loader, model, criterion, optimizer)
 
-W = model.encoder.weight.detach().cpu().numpy()   # (20, 784)
-W2 = model.decoder.weight.detach().cpu().numpy()
-W3 = model.decoder.bias.detach().cpu().numpy()
+W = model.encoder.weight.detach().cpu().numpy()   #(20, 784)
+W2 = model.decoder.weight.detach().cpu().numpy() #(784, 20)
+W3 = model.decoder.bias.detach().cpu().numpy() #(784)
 
-W2 = np.transpose(W2, (1,0))
+W2 = np.transpose(W2, (1,0)) #(20, 784) means I can display it the same way I do the encoder weights, gives me a clear picture of what the hidden neurons are contributing to the recreation, this is generally the same pattern as the encoder weights
 
-encoder_mean = np.mean(abs(W))
+encoder_mean = np.mean(abs(W)) #usefull to check things are actually changing, and whether they move towards the MNIST mean
 decoder_mean = np.mean(abs(W2))
 
 
@@ -99,7 +97,7 @@ fig, axes = plt.subplots(4, 5, figsize=(10, 8))
 for i, ax in enumerate(axes.flat):
     filt = W[i].reshape(28, 28)
     ax.imshow(filt, cmap='seismic',
-              vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())  # symmetric colormap centered at 0
+              vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())  #symmetric colormap centered at 0
     ax.set_title(f'neuron {i}')
     ax.axis('off')
 plt.tight_layout()
@@ -109,7 +107,7 @@ fig, axes = plt.subplots(4, 5, figsize=(10, 8))
 for i, ax in enumerate(axes.flat):
     filt = W2[i].reshape(28, 28)
     ax.imshow(filt, cmap='seismic',
-              vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())  # symmetric colormap centered at 0
+              vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())
     ax.set_title(f'neuron {i}')
     ax.axis('off')
 plt.tight_layout()
@@ -121,7 +119,7 @@ im = ax.imshow(filt, cmap='seismic',
                vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())
 ax.set_title('decoder bias (shared)')
 ax.axis('off')
-fig.colorbar(im, ax=ax, fraction=0.046)   # optional, but handy for reading the scale
+fig.colorbar(im, ax=ax, fraction=0.046)   #handy for reading the scale
 plt.tight_layout()
 plt.show()
 

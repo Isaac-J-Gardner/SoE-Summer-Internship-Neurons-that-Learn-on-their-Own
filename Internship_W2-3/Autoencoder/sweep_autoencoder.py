@@ -36,10 +36,10 @@ class SimpleMLP(nn.Module):
 
     def forward(self, x):
         x = nn.Flatten()(x)
-        features = x                      # shape = [batch_size, 784]
+        features = x                     
         x = self.encoder(x)
         x = torch.relu(x)
-        decoded = self.decoder(x)         # shape = [batch_size, 784]
+        decoded = self.decoder(x)        
         return decoded, features
 
 
@@ -53,13 +53,13 @@ def train(data_loader, model, criterion, optimizer):
 
         decoded, features = model(data)
         loss = criterion(decoded, features)
-        total_loss += loss.item()          # .item() so we don't retain the graph
+        total_loss += loss.item()          
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-    return total_loss / num_batches        # average loss for this epoch
+    return total_loss / num_batches       
 
 
 def save_weight_grid(weight, path, title_prefix):
@@ -89,27 +89,23 @@ def save_bias(bias, path):
     fig.savefig(path, dpi=100, bbox_inches='tight')
     plt.close(fig)
 
-
-# ---------------------------------------------------------------------------
-# Learning-rate sweep: 10 values, log-spaced from 0.001 to 10
-# ---------------------------------------------------------------------------
-learning_rates = np.logspace(-1, 1, 10)   # [0.001, ..., 10]
+#learning rate sweep
+learning_rates = np.logspace(-1, 1, 10) #provides equally spaced values in a log space means fair representation across a range of scales
 final_losses = []
-enc_weight_mag = []   # mean(|encoder weight|) per lr
-dec_weight_mag = []   # mean(|decoder weight|) per lr
-bias_mag = []         # mean(|decoder bias|)   per lr
+enc_weight_mag = []   #used for mean(|encoder weight|) per lr
+dec_weight_mag = []   #used for mean(|decoder weight|) per lr
+bias_mag = []         #used for mean(|decoder bias|)   per lr
 
 os.makedirs('sweep', exist_ok=True)
 
 for lr in learning_rates:
-    lr_name = f'lr_{lr:.3g}'               # e.g. lr_0.001, lr_0.167, lr_10
+    lr_name = f'lr_{lr:.3g}' #creating directories for storing results per learning rate (images)              
     lr_dir = os.path.join('sweep', lr_name)
     os.makedirs(lr_dir, exist_ok=True)
 
     print(f'\n=== Training {lr_name}  (lr={lr:.4g}) ===')
 
-    # Same initialisation for every run so the weights/bias are directly
-    # comparable across learning rates. Remove this line for random inits.
+    #Same initialisation for every run so the weights/bias are directly comparable across learning rates
     torch.manual_seed(0)
 
     model = SimpleMLP().to(device)
@@ -123,19 +119,16 @@ for lr in learning_rates:
 
     final_losses.append(last_loss)
 
-    # Pull out the trained parameters (same layout as the original code)
-    W = model.encoder.weight.detach().cpu().numpy()      # (20, 784)
-    W2 = model.decoder.weight.detach().cpu().numpy()     # (784, 20)
-    W3 = model.decoder.bias.detach().cpu().numpy()       # (784,)
-    W2 = np.transpose(W2, (1, 0))                         # (20, 784)
+    W = model.encoder.weight.detach().cpu().numpy()      
+    W2 = model.decoder.weight.detach().cpu().numpy()     
+    W3 = model.decoder.bias.detach().cpu().numpy()       
+    W2 = np.transpose(W2, (1, 0))                         
 
     save_weight_grid(W, os.path.join(lr_dir, 'encoder_weight.png'), 'neuron')
     save_weight_grid(W2, os.path.join(lr_dir, 'decoder_weight.png'), 'neuron')
     save_bias(W3, os.path.join(lr_dir, 'decoder_bias.png'))
 
-    # Track parameter magnitudes. At high lr the bias climbs toward the data
-    # mean while the encoder/decoder weights stay near their init ("learn
-    # nothing"); at low lr the weights carry the reconstruction.
+    #tracking weight magnitudes allows me to compare how they are changing over time, particularly to the MNIST mean which the bias like to do at high LR
     enc_weight_mag.append(float(np.mean(np.abs(W))))
     dec_weight_mag.append(float(np.mean(np.abs(W2))))
     bias_mag.append(float(np.mean(np.abs(W3))))
@@ -144,15 +137,13 @@ for lr in learning_rates:
           f'mean|W_dec|={dec_weight_mag[-1]:.4f}  mean|bias|={bias_mag[-1]:.4f}  '
           f'->  images saved to {lr_dir}/')
 
-# ---------------------------------------------------------------------------
-# Final loss vs learning rate
-# ---------------------------------------------------------------------------
+
 final_losses = np.array(final_losses)
 enc_weight_mag = np.array(enc_weight_mag)
 dec_weight_mag = np.array(dec_weight_mag)
 bias_mag = np.array(bias_mag)
 
-# (1) Final loss vs learning rate
+#final loss vs learning rate, can see which values produce the lowest loss and if this might be the best value for use when combined with a task readout
 fig, ax = plt.subplots(figsize=(7, 5))
 ax.plot(learning_rates, final_losses, 'o-')
 ax.set_xscale('log')
@@ -164,9 +155,7 @@ plt.tight_layout()
 fig.savefig(os.path.join('sweep', 'final_loss_vs_lr.png'), dpi=120, bbox_inches='tight')
 plt.show()
 
-# (2) Where the signal lives: parameter magnitudes vs learning rate.
-# If the weights "learn nothing" they sit near their init magnitude while the
-# bias rises toward the mean image (mean |pixel| ~ 0.131 for MNIST).
+#graphing mean weight magnitudes against learning rates
 fig, ax = plt.subplots(figsize=(7, 5))
 ax.plot(learning_rates, enc_weight_mag, 'o-', label='mean |encoder weight|')
 ax.plot(learning_rates, dec_weight_mag, 's-', label='mean |decoder weight|')
@@ -183,6 +172,7 @@ plt.tight_layout()
 fig.savefig(os.path.join('sweep', 'magnitude_vs_lr.png'), dpi=120, bbox_inches='tight')
 plt.show()
 
+#nice little summary
 print('\nSweep complete. Summary:')
 print(f'  {"lr":>10}  {"final_loss":>12}  {"|W_enc|":>9}  {"|W_dec|":>9}  {"|bias|":>9}')
 for lr, l, we, wd, b in zip(learning_rates, final_losses,
