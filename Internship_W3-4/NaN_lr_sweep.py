@@ -2,8 +2,8 @@ import os
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
-from torchvision import datasets
+from torch.utils.data import DataLoader, TensorDataset
+from torchvision import datasets, transforms
 from torchvision.transforms import ToTensor
 import matplotlib.pyplot as plt
 
@@ -20,10 +20,74 @@ epochs = 25
 n_neurons = 20
 in_dim = 28 * 28
 
-data_dir = './data'
-train_dataset = datasets.MNIST(data_dir, train=True, download=True, transform=ToTensor())
-train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
+def compute_zca_matrix(X, eps=1e-5):
+    """
+    Compute the ZCA whitening matrix and mean from data.
 
+    Args:
+        X:   (N, D) tensor of flattened samples (float, ideally in [0, 1]).
+        eps: regularization added to eigenvalues to avoid blow-up on
+             near-zero variance directions.
+
+    Returns:
+        zca:  (D, D) whitening matrix.
+        mean: (1, D) per-feature mean used for centering.
+    """
+    X = X.to(torch.float64)                 # float64 for a stable eigendecomp
+    mean = X.mean(dim=0, keepdim=True)
+    Xc = X - mean
+
+    # Covariance matrix (D, D)
+    cov = (Xc.T @ Xc) / (Xc.shape[0] - 1)
+
+    # Symmetric eigendecomposition
+    eigvals, eigvecs = torch.linalg.eigh(cov)
+
+    # W = U diag(1/sqrt(lambda + eps)) U^T
+    inv_sqrt = torch.diag(1.0 / torch.sqrt(eigvals + eps))
+    zca = eigvecs @ inv_sqrt @ eigvecs.T
+
+    return zca.to(torch.float32), mean.to(torch.float32)
+
+
+def apply_zca(X, zca, mean):
+    """Apply a precomputed ZCA transform. X is (N, D)."""
+    return (X - mean) @ zca.T
+
+
+def zca_whiten_mnist(data_root="./data", eps=1e-5, batch_size=128):
+    """
+    Load MNIST, fit ZCA on the training set, and return whitened
+    train/test DataLoaders. The transform is fit on train only and
+    applied to both, which is the correct way to avoid leakage.
+    """
+    to_tensor = transforms.ToTensor()  # gives (1, 28, 28) in [0, 1]
+
+    train = datasets.MNIST(data_root, train=True,  download=True, transform=to_tensor)
+    test  = datasets.MNIST(data_root, train=False, download=True, transform=to_tensor)
+
+    # Stack into flat (N, 784) tensors
+    X_train = train.data.float().div(255.0).view(len(train), -1)
+    X_test  = test.data.float().div(255.0).view(len(test), -1)
+    y_train, y_test = train.targets, test.targets
+
+    # Fit on train, apply to both
+    zca, mean = compute_zca_matrix(X_train, eps=eps)
+    X_train_w = apply_zca(X_train, zca, mean)
+    X_test_w  = apply_zca(X_test,  zca, mean)
+
+    # Reshape back to images if your model expects (N, 1, 28, 28)
+    X_train_w = X_train_w.view(-1, 1, 28, 28)
+    X_test_w  = X_test_w.view(-1, 1, 28, 28)
+
+    train_loader = DataLoader(TensorDataset(X_train_w, y_train),
+                              batch_size=batch_size, shuffle=True)
+    test_loader  = DataLoader(TensorDataset(X_test_w, y_test),
+                              batch_size=batch_size, shuffle=False)
+
+    return train_loader, test_loader, zca, mean
+
+train_loader, _, _, _ = zca_whiten_mnist
 
 class NeuronAutoencoder(nn.Module):
     """Each of the n_neurons is its own autoencoder: its scalar activation is
@@ -81,7 +145,7 @@ def save_grid(mat, path, title_prefix='neuron'):
 # ---------------------------------------------------------------------------
 # Learning-rate sweep: 20 values, log-spaced from 0.001 to 10
 # ---------------------------------------------------------------------------
-learning_rates = np.logspace(1, 4, 15)   # [0.001, ..., 10]
+learning_rates = np.logspace(-1, 1, 10)   # [0.001, ..., 10]
 final_losses = []
 enc_weight_mag = []   # mean(|encoder weight|) per lr
 dec_weight_mag = []   # mean(|decoder weight|) per lr
