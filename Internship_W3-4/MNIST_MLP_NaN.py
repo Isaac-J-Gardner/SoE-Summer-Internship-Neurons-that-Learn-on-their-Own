@@ -15,11 +15,31 @@ else:
     print('No GPU found, using CPU instead.')
     device = torch.device('cpu')
 
+batch_size = 64
+
+data_dir = './data'
+print('data_dir =', data_dir)
+
+
+train_dataset = datasets.MNIST(data_dir, train=True, download=True, transform=ToTensor())
+test_dataset = datasets.MNIST(data_dir, train=False, transform=ToTensor())
+
+train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
+test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False)
+
+total = torch.zeros(1, 28, 28)
+n = 0
+for images, _ in train_loader:
+    total += images.sum(dim=0)   # sum over the batch
+    n += images.size(0)
+mean_image = nn.Flatten()(total / n)        # shape [1, 28, 28]
+mean_image = mean_image.to(device)
+
 class SimpleMLP(nn.Module):
     def __init__(self):
         super().__init__()
         self.encoder = nn.Linear(28*28, 20)
-        self.decoder_weights = nn.Parameter(torch.randn(20, 784) * 0.01)
+        self.decoder_weights = nn.Parameter(torch.randn(20, 784) * 0.01) #each of the 20 hiddens is itself an autoencoder, 784->1->784
         self.decoder_bias = nn.Parameter(torch.zeros(20, 784))
         self.readout = nn.Linear(20, 10)
 

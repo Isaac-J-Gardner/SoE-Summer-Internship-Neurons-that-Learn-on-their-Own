@@ -1,3 +1,4 @@
+#im reading up on information theory for some tests looking at cross entropy, and as a paper looked into redundancy and the optimum amount of it.
 import math
 
 while True:
