@@ -57,7 +57,7 @@ import matplotlib.pyplot as plt
 #  CONFIG  (everything you would want to change lives here)
 # --------------------------------------------------------------------------- #
 SEEDS      = [0]                 # e.g. [0, 1, 2, 3, 4] for the rigorous run
-LR_LIST    = [0.1, 1, 10, 100.0]              # e.g. [0.01, 0.1, 0.5, 1.29, 3.0, 10.0] to sweep
+LR_LIST    = [100.0]              # e.g. [0.01, 0.1, 0.5, 1.29, 3.0, 10.0] to sweep
 RECON_EPOCHS = 20
 CHECKPOINTS  = [0, 5, 10, 15, 20]  # epochs at which the readout probe is run
 N_HIDDEN   = 20
@@ -82,15 +82,6 @@ PROBE_BATCH     = 256
 PROBE_MAX_EPOCHS = 200
 PROBE_TOL       = 1e-5          # stop when train loss improves by less than this
 PROBE_PATIENCE  = 5
-
-# Standard supervised MLP baseline on NK (same hidden width, trained end-to-end).
-# This is the reference the NK linear-probe curve is compared against: a network
-# of identical capacity that is ALLOWED to shape its hidden features for the task,
-# vs. the probe which reads a linear map off frozen reconstruction-driven features.
-STDMLP_HIDDEN = N_HIDDEN        # match the Neuron-Autoencoder hidden width
-STDMLP_EPOCHS = 60              # raise for a more fully-converged baseline
-STDMLP_LR     = 1e-3            # Adam
-STDMLP_BATCH  = 256
 
 EIG_FLOOR = 1e-12              # clamp for effective-rank eigenvalues
 DATA_DIR  = "./data"
@@ -210,23 +201,6 @@ class NeuronAutoencoder(nn.Module):
         decoded = (a.unsqueeze(2) * self.decoder_weights.unsqueeze(0)
                    + self.decoder_bias.unsqueeze(0))       # (B, H, in_dim)
         return decoded, x, a
-
-
-class StandardMLP(nn.Module):
-    """Plain supervised MLP: in_dim -> hidden (sigmoid) -> out_dim.
-
-    Trained end-to-end on the task (task gradients DO touch the hidden layer),
-    unlike the Neuron Autoencoder probe. Sigmoid hidden units and matched width
-    make this the closest "same-capacity, task-trained" comparison to the probe.
-    """
-    def __init__(self, in_dim=IN_DIM, hidden=STDMLP_HIDDEN, out_dim=1):
-        super().__init__()
-        self.fc1 = nn.Linear(in_dim, hidden)
-        self.act = nn.Sigmoid()
-        self.fc2 = nn.Linear(hidden, out_dim)
-
-    def forward(self, x):
-        return self.fc2(self.act(self.fc1(x)))
 
 
 # --------------------------------------------------------------------------- #
@@ -372,36 +346,6 @@ def train_probe(feat_tr, y_tr, feat_te, y_te, task, out_dim):
         return ((out.squeeze(1) - yte) ** 2).mean().item()        # MSE
 
 
-def train_standard_mlp(data, seed):
-    """Train a plain supervised MLP end-to-end on the task and return its test
-    metric (regression MSE for NK, accuracy for a classification task). Serves as
-    the task-trained baseline the frozen-feature probe is plotted against."""
-    Xtr = data["Xtr"].to(device); ytr = data["ytr"].to(device)
-    Xte = data["Xte"].to(device); yte = data["yte"].to(device)
-    reg = (data["task"] == "reg")
-
-    net = StandardMLP(IN_DIM, STDMLP_HIDDEN, data["out_dim"]).to(device)
-    opt = torch.optim.Adam(net.parameters(), lr=STDMLP_LR)
-    loss_fn = nn.MSELoss() if reg else nn.CrossEntropyLoss()
-
-    gen = torch.Generator(device="cpu"); gen.manual_seed(int(seed))
-    for _ in range(STDMLP_EPOCHS):
-        net.train()
-        perm = torch.randperm(Xtr.shape[0], generator=gen)
-        for i in range(0, Xtr.shape[0], STDMLP_BATCH):
-            idx = perm[i:i + STDMLP_BATCH]
-            out = net(Xtr[idx])
-            loss = loss_fn(out.squeeze(1), ytr[idx]) if reg else loss_fn(out, ytr[idx])
-            opt.zero_grad(); loss.backward(); opt.step()
-
-    net.eval()
-    with torch.no_grad():
-        out = net(Xte)
-        if reg:
-            return ((out.squeeze(1) - yte) ** 2).mean().item()    # MSE
-        return (out.argmax(1) == yte).float().mean().item()       # accuracy
-
-
 # --------------------------------------------------------------------------- #
 #  ONE RUN  (condition x lr x seed)
 # --------------------------------------------------------------------------- #
@@ -458,18 +402,9 @@ def run_one(condition, lr, seed, mnist_cache):
               f"r_eff_cov={m['reff_cov']:.2f}  recon={m['recon']:.4g}"
               + (f"  probe={probe_log[epoch]:.4g}" if epoch in CHECKPOINTS else ""))
 
-    # Standard supervised MLP baseline (NK only): same hidden width, trained
-    # end-to-end, so we can plot it alongside the frozen-feature probe curve.
-    stdmlp_metric = float("nan")
-    if condition == "NK":
-        stdmlp_metric = train_standard_mlp(data, seed)
-        print(f"    [{condition} lr={lr} seed={seed}] "
-              f"standard MLP (end-to-end) test MSE = {stdmlp_metric:.4g}")
-
     return dict(epoch_log={k: np.array(v) for k, v in epoch_log.items()},
                 probe=np.array([probe_log[c] for c in CHECKPOINTS]),
-                input_reff=input_reff, task=data["task"],
-                stdmlp=stdmlp_metric)
+                input_reff=input_reff, task=data["task"])
 
 
 # --------------------------------------------------------------------------- #
@@ -486,9 +421,6 @@ def aggregate(per_seed_runs):
     agg["probe"] = (np.nanmean(probe, 0), np.nanstd(probe, 0))
     agg["input_reff"] = float(np.nanmean([r["input_reff"] for r in per_seed_runs]))
     agg["task"] = per_seed_runs[0]["task"]
-    if "stdmlp" in per_seed_runs[0]:
-        sm = np.array([r["stdmlp"] for r in per_seed_runs], dtype=float)
-        agg["stdmlp"] = (float(np.nanmean(sm)), float(np.nanstd(sm)))
     return agg
 
 
@@ -539,49 +471,13 @@ def plot_probe_mnist(results_lr, fname):
     fig.tight_layout(); fig.savefig(fname, dpi=130); plt.close(fig)
 
 
-def plot_redundancy_vs_probe(results_lr, rkey, xlabel, title, fname):
-    """MNIST only: probe test accuracy (y) against spectral redundancy (x),
-    paired at the checkpoint epochs. Points are connected in checkpoint order so
-    the line traces the training trajectory through the redundancy/accuracy plane.
-    Error bars are cross-seed std in each axis."""
-    ckpt = np.array(CHECKPOINTS)
-    fig, ax = plt.subplots(figsize=(7, 4.5))
-    for c in ["MNIST_raw", "MNIST_meansub", "MNIST_zca"]:
-        if c not in results_lr:
-            continue
-        rmean, rstd = results_lr[c][rkey]           # over all epochs
-        pmean, pstd = results_lr[c]["probe"]        # over CHECKPOINTS
-        x, xe = rmean[ckpt], rstd[ckpt]             # redundancy at checkpoints
-        ax.errorbar(x, pmean, xerr=xe, yerr=pstd, color=COLORS[c], label=c,
-                    lw=1.5, marker="o", capsize=3, alpha=0.9)
-        for xi, yi, e in zip(x, pmean, CHECKPOINTS):
-            if np.isfinite(xi) and np.isfinite(yi):
-                ax.annotate(f"e{e}", (xi, yi), textcoords="offset points",
-                            xytext=(4, 4), fontsize=7, color=COLORS[c])
-    ax.set_xlabel(xlabel); ax.set_ylabel("linear-probe test accuracy")
-    ax.set_title(title); ax.legend(); ax.grid(alpha=0.3)
-    fig.tight_layout(); fig.savefig(fname, dpi=130); plt.close(fig)
-
-
 def plot_probe_nk(results_lr, fname):
     mean, std = results_lr["NK"]["probe"]
     fig, ax = plt.subplots(figsize=(7, 4.5))
     ax.errorbar(CHECKPOINTS, mean, yerr=std, color=COLORS["NK"],
-                label="NK probe (frozen autoencoder features)",
-                lw=2, marker="o", capsize=3)
-
-    # Standard end-to-end MLP baseline (same width) drawn as a horizontal band.
-    sm = results_lr["NK"].get("stdmlp")
-    if sm is not None and not math.isnan(sm[0]):
-        sm_mean, sm_std = sm
-        ax.axhline(sm_mean, ls="--", color="#555555", lw=2,
-                   label=f"standard MLP, end-to-end (MSE = {sm_mean:.4g})")
-        ax.fill_between([CHECKPOINTS[0], CHECKPOINTS[-1]],
-                        sm_mean - sm_std, sm_mean + sm_std,
-                        color="#555555", alpha=0.15)
-
+                label="NK", lw=2, marker="o", capsize=3)
     ax.set_xlabel("reconstruction epoch"); ax.set_ylabel("test regression MSE")
-    ax.set_title("NK: linear readout vs standard MLP baseline (regression)")
+    ax.set_title("Linear readout MSE (NK, regression)")
     ax.legend(); ax.grid(alpha=0.3)
     fig.tight_layout(); fig.savefig(fname, dpi=130); plt.close(fig)
 
@@ -618,16 +514,6 @@ def make_plots_for_lr(results_lr, lr):
     plot_recon(results_lr, f"{d}/recon_{tag}.png")
     plot_probe_mnist(results_lr, f"{d}/probe_mnist_{tag}.png")
     plot_probe_nk(results_lr, f"{d}/probe_nk_{tag}.png")
-    plot_redundancy_vs_probe(
-        results_lr, "rspec_cov",
-        "spectral redundancy (cov)  =  1 - r_eff/N",
-        f"MNIST: probe accuracy vs spectral redundancy (cov), lr={lr:g}",
-        f"{d}/redund_vs_probe_cov_{tag}.png")
-    plot_redundancy_vs_probe(
-        results_lr, "rspec_corr",
-        "spectral redundancy (corr)  =  1 - r_eff/N",
-        f"MNIST: probe accuracy vs spectral redundancy (corr), lr={lr:g}",
-        f"{d}/redund_vs_probe_corr_{tag}.png")
     plot_epoch_metric(results_lr, "enc_cos", "mean |cosine| of encoder rows",
                       f"Redundancy index (encoder-row alignment), lr={lr:g}",
                       f"{d}/redundancy_index_{tag}.png")
