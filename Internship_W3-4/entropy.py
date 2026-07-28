@@ -12,4 +12,5 @@ while True:
         h = -1 * h
         print(h, math.exp(h))
     else:
+        print("CHANGE")
         break
