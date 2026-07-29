@@ -63,8 +63,8 @@ import matplotlib.pyplot as plt
 #  CONFIG  (everything you would want to change lives here)
 # --------------------------------------------------------------------------- #
 SEEDS        = [0]               # e.g. [0, 1, 2, 3, 4] for the rigorous run
-LR_LIST      = [100.0]           # same sweep as before, e.g. [0.1, 1.0, 10.0, 100.0]
-INHIB_SCALERS = [0.0, 0.5, 1.0, 2.0]   # the swept axis: lateral-inhibition strength
+LR_LIST      = [0.01, 0.1, 1, 10]           # same sweep as before, e.g. [0.1, 1.0, 10.0, 100.0]
+INHIB_SCALERS = [0.0, 0.2, 0.4, 0.8, 1.6]   # the swept axis: lateral-inhibition strength
 RECON_EPOCHS = 20
 CHECKPOINTS  = [0, 5, 10, 15, 20]      # epochs at which the readout probe is run
 N_HIDDEN     = 20
