@@ -50,7 +50,7 @@ class SimpleMLP(nn.Module):
         decoded = None
         if self.training:
             decoded = self.decoder(x) #shape = [batch_size, 784]
-        x = self.readout(x.detach())
+        x = self.readout(x)
         return x, decoded, features
 
 model = SimpleMLP().to(device)
@@ -58,7 +58,7 @@ print(model)
 
 criterion = nn.CrossEntropyLoss()
 recon_criterion = nn.MSELoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+optimizer = torch.optim.SGD(model.parameters(), lr=0.l)
 
 def correct(output, target):
     predicted_digits = output.argmax(1)                            # pick digit with largest network output
@@ -83,8 +83,8 @@ def train(data_loader, model, criterion, optimizer):
         
         # Calculate the loss
         task_loss = criterion(output, target)
-        recon_loss = recon_criterion(decoded, features)
-        loss = task_loss + recon_loss
+        #recon_loss = recon_criterion(decoded, features)
+        loss = task_loss #+ recon_loss
         total_loss += loss
 
         # Count number of correct digits
@@ -137,7 +137,7 @@ def test(test_loader, model, criterion):
 test(test_loader, model, criterion)
 
 W = model.encoder.weight.detach().cpu().numpy()   # (20, 784)
-W2 = model.decoder.weights.detach().cpu().numpy()
+W2 = model.decoder.weight.detach().cpu().numpy()
 W3 = model.decoder.bias.detach().cpu().numpy()
 
 encoder_mean = np.mean(abs(W))
