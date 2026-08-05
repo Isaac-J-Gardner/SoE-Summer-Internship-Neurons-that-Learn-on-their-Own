@@ -1,0 +1,241 @@
+#all code in this file is taken from https://www.kaggle.com/code/khoahongg/classify-n-mnist-with-spiking-neural-network
+import snntorch as snn
+from snntorch import spikeplot as splt
+from snntorch import spikegen
+import snntorch.functional as SF
+import torch
+import torch.nn as nn
+import matplotlib.pyplot as plt
+
+import os
+import pandas as pd 
+import numpy as np
+import struct
+import random
+
+np.random.seed(42)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+#@title Plotting Settings
+def plot_cur_mem_spk(cur, mem, spk, thr_line=False, vline=False, title=False, ylim_max1=1.25, ylim_max2=1.25):
+  # Generate Plots
+  fig, ax = plt.subplots(3, figsize=(8,6), sharex=True, 
+                        gridspec_kw = {'height_ratios': [1, 1, 0.4]})
+
+  # Plot input current
+  ax[0].plot(cur, c="tab:orange")
+  ax[0].set_ylim([0, ylim_max1])
+  ax[0].set_xlim([0, 200])
+  ax[0].set_ylabel("Input Current ($I_{in}$)")
+  if title:
+    ax[0].set_title(title)
+
+  # Plot membrane potential
+  ax[1].plot(mem)
+  ax[1].set_ylim([0, ylim_max2]) 
+  ax[1].set_ylabel("Membrane Potential ($U_{mem}$)")
+  if thr_line:
+    ax[1].axhline(y=thr_line, alpha=0.25, linestyle="dashed", c="black", linewidth=2)
+  plt.xlabel("Time step")
+
+  # Plot output spike using spikeplot
+  splt.raster(spk, ax[2], s=400, c="black", marker="|")
+  if vline:
+    ax[2].axvline(x=vline, ymin=0, ymax=6.75, alpha = 0.15, linestyle="dashed", c="black", linewidth=2, zorder=0, clip_on=False)
+  plt.ylabel("Output spikes")
+  plt.yticks([]) 
+
+  plt.show()
+
+def plot_snn_spikes(spk_in, title):
+  # Generate Plots
+  fig, ax = plt.subplots(1, figsize=(8,4))
+
+  # Plot input spikes
+  splt.raster(spk_in[:,0], ax, s=0.03, c="black")
+  ax.set_xlabel("Time Step")
+  ax.set_ylabel("Pixels")
+  ax.set_title(title)
+
+  plt.show()
+
+def visualize_image(image):
+    plt.figure(figsize=(6, 6))
+    plt.imshow(image, cmap='gray', interpolation='nearest')
+    plt.colorbar(label='Event Count')
+    plt.xlabel('X Address')
+    plt.ylabel('Y Address')
+    plt.title('N-MNIST Image Visualization')
+    plt.gca().invert_yaxis()  # Invert y-axis to match image coordinates
+    plt.show()
+
+def read_nmnist_file(file_path):
+    """
+    Args:
+        file_path (str): Path to the N-MNIST file to read.
+    Returns:
+        x_coords (list): List of x-coordinates of the events.
+        y_coords (list): List of y-coordinates of the events.
+        polarities (list): List of polarities of the events.
+        timestamps (list): List of timestamps of the events.
+    """
+    x_coords = []
+    y_coords = []
+    polarities = []
+    timestamps = []
+
+    with open(file_path, 'rb') as f:
+        data = f.read()
+        for i in range(0, len(data), 5):
+            event = data[i:i+5]
+
+            # Unpack the 5 bytes
+            combined = int.from_bytes(event, byteorder='big')
+            
+            # Extract fields
+            x = (combined >> 32) & 0xFF
+            y = (combined >> 24) & 0xFF
+            polarity = (combined >> 23) & 0x01
+            timestamp = combined & 0x7FFFFF
+            
+            x_coords.append(x)
+            y_coords.append(y)
+            polarities.append(polarity)
+            timestamps.append(timestamp)
+    
+    return x_coords, y_coords, polarities, timestamps
+
+def create_image(x_coords, y_coords, polarities, image_size=(34, 34)):
+    image = np.zeros(image_size, dtype=np.int32)
+    for x, y, polarity in zip(x_coords, y_coords, polarities):
+        if polarity == 1:
+            image[y, x] += 1 
+    return image
+
+def event_to_spike_train(x_coords, y_coords, polarities, timestamps, delta_t=1000, max_num_steps=350):
+    """
+    Args:
+        x_coords: List of x-coordinates of events (len = num_events)
+        y_coords: List of y-coordinates of events (len = num_events)
+        polarities: List of polarities of events (len = num_events)
+        timestamps: List of timestamps of events (len = num_events)
+        delta_t: Time interval for discretization
+    Returns:
+        spike_train: Spike train tensor (shape = max_num_steps, num_neurons)
+    """
+    spike_train = torch.zeros(max_num_steps, 34*34)
+    for x, y, p, t in zip(x_coords, y_coords, polarities, timestamps):
+        spike_train[t // delta_t, y*34 + x] = 1
+    
+    return spike_train
+
+class NMNISTDataset(torch.utils.data.Dataset):
+    def __init__(self, file_paths, delta_t=1000, max_num_steps=350):
+        self.file_paths = file_paths
+        self.delta_t = delta_t
+        self.max_num_steps = max_num_steps
+
+    def __len__(self):
+        return len(self.file_paths)
+
+    def __getitem__(self, idx):
+        file_path, target = self.file_paths[idx]
+        x_coords, y_coords, polarities, timestamps = read_nmnist_file(file_path)
+        spike_train = event_to_spike_train(x_coords, y_coords, polarities, timestamps, self.delta_t, self.max_num_steps)
+        return spike_train, target
+    
+def get_file_paths_and_targets(root_dir='n-mnist_data/Train/Train'):
+    """
+    Args:
+        root_dir (str): Root directory containing the N-MNIST dataset.
+    Returns:
+        file_paths (list of tuples): List of (file path, target) tuples for the dataset.
+    """
+    file_paths = []
+    for root, dirs, files in os.walk(root_dir):
+        for file in files:
+            folder_name = os.path.basename(root)
+            file_paths.append((os.path.join(root, file), int(folder_name)))
+    return file_paths
+
+train_file_paths_and_targets = get_file_paths_and_targets(root_dir='n-mnist_data/Train/Train')
+train_dataset = NMNISTDataset(train_file_paths_and_targets)
+
+test_file_paths_and_targets = get_file_paths_and_targets(root_dir='n-mnist_data/Test/Test')
+test_dataset = NMNISTDataset(test_file_paths_and_targets)
+
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
+test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=32, shuffle=False)
+
+class SNN(nn.Module):
+    def __init__(self, num_inputs, num_hidden, num_outputs, beta1):
+        super().__init__()
+        beta2 = torch.rand((num_outputs), dtype = torch.float) # independent decay rate for each leaky neuron in layer 2: [0, 1)
+
+        # Initialize layers
+        self.fc1 = nn.Linear(num_inputs, num_hidden)
+        self.lif1 = snn.Leaky(beta=beta1) # not a learnable decay rate
+        self.fc2 = nn.Linear(num_hidden, num_outputs)
+        self.lif2 = snn.Leaky(beta=beta2, learn_beta=True) # learnable decay rate
+
+    def forward(self, x):
+        """
+        Args:
+            x: Input spike train (batch_size, num_steps, num_inputs)
+        Returns:
+            spk2_rec: Output spikes (batch_size, num_steps, num_outputs)
+            mem2_rec: Hidden states (batch_size, num_steps, num_outputs)
+        """
+        mem1 = self.lif1.init_leaky() # reset/init hidden states at t=0
+        mem2 = self.lif2.init_leaky() # reset/init hidden states at t=0
+        spk2_rec = [] # record output spikes
+        mem2_rec = [] # record output hidden states
+
+        for step in range(num_steps): # loop over time
+            cur1 = self.fc1(x[:, step, :])
+            spk1, mem1 = self.lif1(cur1, mem1)
+            cur2 = self.fc2(spk1)
+            spk2, mem2 = self.lif2(cur2, mem2)
+
+            spk2_rec.append(spk2) # record spikes
+            mem2_rec.append(mem2) # record membrane
+
+        return torch.stack(spk2_rec), torch.stack(mem2_rec)
+
+net = SNN(num_inputs=1156, num_hidden=128, num_outputs=10, beta1=0.8).to(device)
+
+optimizer = torch.optim.Adam(net.parameters(), lr=5e-3)
+loss_fn = SF.ce_rate_loss()
+
+num_epochs = 1 # run for 1 epoch - each data sample is seen only once
+num_steps = 350  # run for 25 time steps 
+
+loss_hist = [] # record loss over iterations 
+acc_hist = [] # record accuracy over iterations
+
+# training loop
+for epoch in range(num_epochs):
+    for i, (data, targets) in enumerate(iter(train_loader)):
+        data = data.to(device)
+        targets = targets.to(device)
+
+        net.train() 
+        spk_rec, _ = net(data) # forward-pass
+        loss_val = loss_fn(spk_rec, targets) # loss calculation
+        optimizer.zero_grad() # null gradients
+        loss_val.backward() # calculate gradients
+        optimizer.step() # update weights
+        loss_hist.append(loss_val.item()) # store loss
+
+        # print every 25 iterations
+        if i % 5 == 0:
+          net.eval()
+          print(f"Epoch {epoch}, Iteration {i} \nTrain Loss: {loss_val.item():.2f}")
+
+          # check accuracy on a single batch
+          acc = SF.accuracy_rate(spk_rec, targets)  
+          acc_hist.append(acc)
+          print(f"Accuracy: {acc * 100:.2f}%\n")
+        
+        if i == 50:
+            break

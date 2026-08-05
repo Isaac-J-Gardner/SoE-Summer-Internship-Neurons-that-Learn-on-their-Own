@@ -13,8 +13,6 @@ class NK_model:
         return self.inputs
 
     def calculate_fitness(self):
-        # bit weights: the gene itself is the most-significant bit, so
-        # for K=1 -> [2, 1], for K=2 -> [4, 2, 1]
         powers = 2 ** np.arange(self.K, -1, -1)
 
         total = 0.0

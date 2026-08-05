@@ -1,19 +1,39 @@
-import os
-import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
-from torchvision import datasets, transforms
+from torch.utils.data import DataLoader
+from torchvision import datasets
 from torchvision.transforms import ToTensor
+import random
+import numpy as np
 import matplotlib.pyplot as plt
+
+EIG_FLOOR = 1e-12
+N_hid_neurons = 100
 
 print('Using PyTorch version:', torch.__version__)
 if torch.cuda.is_available():
     print('Using GPU, device name:', torch.cuda.get_device_name(0))
     device = torch.device('cuda')
 else:
-    print('No GPU found, using CPU instead.')
+    print('No GPU found, using CPU instead.') 
     device = torch.device('cpu')
+    
+batch_size = 64
+
+data_dir = './data'
+print('data_dir =', data_dir)
+
+
+train_dataset = datasets.MNIST(data_dir, train=True, download=True, transform=ToTensor())
+test_dataset = datasets.MNIST(data_dir, train=False, transform=ToTensor())
+
+train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
+test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False)
+
+for (data, target) in train_loader:
+    print('data:', data.size(), 'type:', data.type())
+    print('target:', target.size(), 'type:', target.type())
+    break
 
 class NeuronAutoencoder(nn.Module):
     def __init__(self, n_neurons=20, in_dim=784):
@@ -60,49 +80,8 @@ def train_recon(data_loader, model, recon_criterion, optimizer):
     train_loss = total_loss/num_batches
     print(f"Average loss: {train_loss:7f}")
 
-epochs = 25
+epochs = 20
 for epoch in range(epochs):
     print(f"Recon epoch: {epoch+1}")
     train_recon(train_loader, model, recon_criterion, optimizer_recon)
 
-W = model.encoder.weight.detach().cpu().numpy()   # (20, 784)
-W2 = model.decoder_weights.detach().cpu().numpy()
-W3 = model.decoder_bias.detach().cpu().numpy()
-
-encoder_mean = np.mean(abs(W))
-decoder_mean = np.mean(abs(W2))
-bias_mean = np.mean(abs(W3))
-print(encoder_mean)
-
-print(decoder_mean)
-print(bias_mean)
-
-fig, axes = plt.subplots(4, 5, figsize=(10, 8))
-for i, ax in enumerate(axes.flat):
-    filt = W[i].reshape(28, 28)
-    ax.imshow(filt, cmap='seismic',
-              vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())  # symmetric colormap centered at 0
-    ax.set_title(f'neuron {i}')
-    ax.axis('off')
-plt.tight_layout()
-plt.show()
-
-fig, axes = plt.subplots(4, 5, figsize=(10, 8))
-for i, ax in enumerate(axes.flat):
-    filt = W2[i].reshape(28, 28)
-    ax.imshow(filt, cmap='seismic',
-              vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())  # symmetric colormap centered at 0
-    ax.set_title(f'neuron {i}')
-    ax.axis('off')
-plt.tight_layout()
-plt.show()
-
-fig, axes = plt.subplots(4, 5, figsize=(10, 8))
-for i, ax in enumerate(axes.flat):
-    filt = W3[i].reshape(28, 28)
-    ax.imshow(filt, cmap='seismic',
-              vmin=-np.abs(filt).max(), vmax=np.abs(filt).max())  # symmetric colormap centered at 0
-    ax.set_title(f'neuron {i}')
-    ax.axis('off')
-plt.tight_layout()
-plt.show()
