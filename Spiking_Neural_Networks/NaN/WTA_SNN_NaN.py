@@ -13,8 +13,6 @@ from snntorch import utils
 from snntorch import surrogate
 
 import numpy as np
-theta_plus = 1
-theta_decay = 0.9
 
 class NeuronDecoder(nn.Module):
     def __init__(self, n_neurons=20, in_dim=784):
@@ -31,7 +29,6 @@ class WTASpikingEncoder(nn.Module):
         self.n_hidden = n_hidden
         self.fc  = nn.Linear(n_in, n_hidden)
         # per-neuron adaptive threshold, updated each batch
-        self.theta = torch.zeros(n_hidden, device=device)          # buffer
         self.lif = snn.Leaky(beta=beta, spike_grad=spike_grad)
 
         # every neuron inhibits every other; none inhibits itself
@@ -46,7 +43,6 @@ class WTASpikingEncoder(nn.Module):
             # feedforward drive + inhibition from whoever fired last step
             cur = self.fc(x) + spk @ self.W_inh.t()
             spk, mem = self.lif(cur, mem)
-            print(spk.shape, spk)
             spk_rec.append(spk)
             mem_rec.append(mem)
         return spk_rec, mem_rec   # [T, batch, 20]
@@ -73,11 +69,6 @@ class SAE(nn.Module):
         spk_rec,spk_mem=self.encode(x) #Output spike trains and neuron membrane states
         spk_rec=torch.stack(spk_rec,dim=2)
         spk_mem=torch.stack(spk_mem,dim=2) 
-        print(spk_rec.shape)
-
-        self.encoder.theta += theta_plus * torch.sum(torch.sum(spk_rec, dim=2), dim=0)   # firing raises own threshold
-        self.encoder.theta *= theta_decay
-        self.encoder.lif.threshold = self.encoder.theta + thresh
         
         #decode
         spk_mem2=[];spk_rec2=[];decoded_x=[]
@@ -170,7 +161,7 @@ net=SAE()
 net = net.to(device)
 
 optimizer = torch.optim.SGD(net.parameters(), 
-                            lr=1)
+                            lr=10)
 
 #Run training and testing        
 for e in range(epochs): 
