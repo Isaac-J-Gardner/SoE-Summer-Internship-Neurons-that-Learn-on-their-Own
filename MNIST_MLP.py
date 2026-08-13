@@ -48,7 +48,7 @@ model = SimpleMLP().to(device)
 print(model)
 
 criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=0.5)
+optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
 
 def correct(output, target):
     predicted_digits = output.argmax(1)                            # pick digit with largest network output
@@ -87,7 +87,7 @@ def train(data_loader, model, criterion, optimizer):
     accuracy = total_correct/num_items
     print(f"Average loss: {train_loss:7f}, accuracy: {accuracy:.2%}")
 
-epochs = 3
+epochs = 10
 for epoch in range(epochs):
     print(f"Training epoch: {epoch+1}")
     train(train_loader, model, criterion, optimizer)

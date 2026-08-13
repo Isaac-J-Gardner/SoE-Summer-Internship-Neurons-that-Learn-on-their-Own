@@ -21,15 +21,20 @@ batch_size  = 64
 lr          = 1       # NOTE: you had 10. With gating the loss is normalised by
                          #   the number of ACTIVE neuron-sample pairs, so re-sweep;
                          #   lr=10 SGD will almost certainly diverge here.
-epochs      = 2
+epochs      = 10
 
 # ---- spiking ----
 beta        = 0.5        # membrane decay
 num_steps   = 20          # timesteps per image
-thresh      = 1.0        # base spiking threshold
+thresh      = 0.5        # base spiking threshold
 
-inhib_weight = 1
-inhib_leak = 0.75
+theta_plus  = 0.05#np.logspace(-1, 1, 5)    # a neuron that fires raises its own threshold by this
+theta_decay = 0.99#np.logspace(np.log(0.98), np.log(0.9999), 5)        # thresholds decay back toward base each step
+                         #   -> too small: one neuron hogs (dead units)
+                         #   -> too large: threshold overrides the match (scrambles)
+
+inhib_weight = 0.1
+inhib_leak = 0.99
 Lag_steps = 1 #the window that is checked for simultaneous firing, if 1, checks 1 before and 1 after, a window of size 3 time steps.
 
 # ---- NEW: competitive gating ----
@@ -53,11 +58,15 @@ class WTASpikingEncoder(nn.Module):
     def __init__(self, n_in=784, n_hidden=20, beta=0.9):
         super().__init__()
         self.n_hidden = n_hidden
+        self.theta_plus  = theta_plus
+        self.theta_decay = theta_decay
         self.fc  = nn.Linear(n_in, n_hidden)
         self.lif = snn.Leaky(beta=beta, spike_grad=spike_grad, threshold=thresh)
 
         W = torch.zeros(n_hidden, n_hidden)
         self.register_buffer("W_inh", W)
+
+        self.register_buffer("theta", torch.zeros(n_hidden))
 
     def forward(self, x, num_steps):
         mem = self.lif.init_leaky()
@@ -65,8 +74,12 @@ class WTASpikingEncoder(nn.Module):
         spk_rec, mem_rec = [], []
         for _ in range(num_steps):
 
-            cur = self.fc(x) + spk @ self.W_inh.t()
+            cur = self.fc(x) + spk @ self.W_inh.t() - self.theta
             spk, mem = self.lif(cur, mem)
+
+            if self.training:
+                with torch.no_grad():
+                    self.theta.mul_(self.theta_decay).add_(self.theta_plus * spk.detach().mean(0))
 
             spk_rec.append(spk)
             mem_rec.append(mem)
@@ -127,6 +140,9 @@ def recon_loss(x_recon, x, activity):
     gradient) on that input."""
     target = x.unsqueeze(1).expand_as(x_recon)            # (B,H,784)
     se = ((x_recon - target) ** 2).mean(dim=2)            # (B,H) per neuron-sample
+    if GATING:
+        gate = (activity.detach() > 0).float()            # (B,H) 1 if neuron fired
+        return (se * gate).sum() / gate.sum().clamp(min=1)
     return se.mean()
 
 
@@ -180,27 +196,27 @@ for e in range(epochs):
     train(net, train_loader, optimizer, e)
 
 # ---- visualise -------------------------------------------------------------
-    W  = net.encoder.fc.weight.detach().cpu().numpy()
-    W2 = net.decoder[0].weight.detach().cpu().numpy()
-    W3 = net.decoder[0].bias.detach().cpu().numpy()
-    for title, mat in [("encoder", W), ("decoder", W2), ("decoder bias", W3)]:
-        fig, axes = plt.subplots(4, 5, figsize=(10, 8)); fig.suptitle(title)
-        for i, ax in enumerate(axes.flat):
-            f = mat[i].reshape(28, 28); m = np.abs(f).max() + 1e-9
-            ax.imshow(f, cmap='seismic', vmin=-m, vmax=m); ax.set_title(f'neuron {i}'); ax.axis('off')
-        plt.tight_layout()
-        plt.show()
-        plt.close()
-
-    W4 = net.encoder.W_inh.detach().cpu().numpy()
-    fig, ax = plt.subplots()
-    fig.suptitle("Inhibition Weights")
-    m = np.abs(W4).max() + 1e-9
-    im = ax.imshow(W4, cmap='seismic', vmin=-m, vmax=m)
-    fig.colorbar(im, ax=ax)
-    ax.set_xlabel("source neuron j")
-    ax.set_ylabel("target neuron i")
+W  = net.encoder.fc.weight.detach().cpu().numpy()
+W2 = net.decoder[0].weight.detach().cpu().numpy()
+W3 = net.decoder[0].bias.detach().cpu().numpy()
+for title, mat in [("encoder", W), ("decoder", W2), ("decoder bias", W3)]:
+    fig, axes = plt.subplots(4, 5, figsize=(10, 8)); fig.suptitle(title)
+    for i, ax in enumerate(axes.flat):
+        f = mat[i].reshape(28, 28); m = np.abs(f).max() + 1e-9
+        ax.imshow(f, cmap='seismic', vmin=-m, vmax=m); ax.set_title(f'neuron {i}'); ax.axis('off')
     plt.tight_layout()
     plt.show()
-    plt.close(fig)
+    plt.close()
+
+W4 = net.encoder.W_inh.detach().cpu().numpy()
+fig, ax = plt.subplots()
+fig.suptitle("Inhibition Weights")
+m = np.abs(W4).max() + 1e-9
+im = ax.imshow(W4, cmap='seismic', vmin=-m, vmax=m)
+fig.colorbar(im, ax=ax)
+ax.set_xlabel("source neuron j")
+ax.set_ylabel("target neuron i")
+plt.tight_layout()
+plt.show()
+plt.close(fig)
 

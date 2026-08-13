@@ -10,7 +10,7 @@ import os
 
 EIG_FLOOR = 1e-12
 N_hid_neurons = 20
-inhib_scaler_vals = np.logspace(-6, 0, 20)
+inhib_scaler_vals = np.logspace(-3.8, -2, 5)
 
 print('Using PyTorch version:', torch.__version__)
 if torch.cuda.is_available():
@@ -37,6 +37,15 @@ for (data, target) in train_loader:
     print('target:', target.size(), 'type:', target.type())
     break
 
+total = torch.zeros(1, 28, 28)
+n = 0
+for images, _ in train_loader:
+    total += images.sum(dim=0)   
+    n += images.size(0)
+mean_image = nn.Flatten()(total / n)        
+mean_image = mean_image.to(device)
+
+
 class SimpleMLP(nn.Module):
     def __init__(self):
         super().__init__()
@@ -47,17 +56,16 @@ class SimpleMLP(nn.Module):
 
     def forward(self, x):
         x = nn.Flatten()(x)
+        x = x - mean_image
         features = x #shape = [batch_size, 784]
         x = self.encoder(x)
         x = torch.sigmoid(x)
         activations = x
         decoded = None
         if self.training:
-            decoded = x.unsqueeze(2) * self.decoder_weights.unsqueeze(0) + self.decoder_bias.unsqueeze(0) #shape = [batch_size, 20, 784]
+            decoded = x.detach().unsqueeze(2) * self.decoder_weights.unsqueeze(0) + self.decoder_bias.unsqueeze(0) #shape = [batch_size, 20, 784]
         output = self.readout(x.detach())
         return output, decoded, features, activations
-
-
 
 
 def correct(output, target):
@@ -245,10 +253,11 @@ seeds = [0]
 #effective_rank_vals = np.zeros_like(inhib_scalers)
 epochs = 10
 temp = 1
+test_set_accuracies = []
 for inhib_val in inhib_scaler_vals:
     torch.manual_seed(0)
     model = SimpleMLP().to(device)
-    path = f'Internship_W4-5/lat_inhib_images/inhib_{inhib_val:.3e}'
+    path = f'Internship_W4-5/lat_inhib_mean_sub_images/inhib_{inhib_val:.3e}'
     print(f"Run {temp}: inhib = {inhib_val}")
     temp = temp + 1
     if not os.path.exists(path):
@@ -256,10 +265,10 @@ for inhib_val in inhib_scaler_vals:
 
     criterion = nn.CrossEntropyLoss()
     recon_criterion = nn.MSELoss()
-    optimizer_recon = torch.optim.SGD(model.parameters(), lr=5)
+    optimizer_recon = torch.optim.SGD(model.parameters(), lr=10)
     optimizer_task = torch.optim.SGD(model.parameters(), lr=0.1)
     for epoch in range(epochs):
-        print(f"task epoch: {epoch+1}")
+        print(f"recon epoch: {epoch+1}")
         train_recon(train_loader, model, recon_criterion, optimizer_recon, inhib_val)
 
     # ---- visualise -------------------------------------------------------------
@@ -299,3 +308,17 @@ for inhib_val in inhib_scaler_vals:
     plt.tight_layout()
     plt.savefig(f"{path}/decoder_bias.png")
     plt.close()
+
+    for epoch in range(epochs):
+        print(f"task epoch: {epoch}")
+        train_task(train_loader, model, criterion, optimizer_task)
+
+    test_set_accuracies.append(test(test_loader, model, criterion))
+    
+fig, ax = plt.subplots()
+ax.semilogx(inhib_scaler_vals, test_set_accuracies)
+ax.set(title="mean subbed lat inhib accuracy")
+ax.grid()
+ax.grid(which="minor", color="0.9")
+plt.savefig("Internship_W4-5/lat_inhib_mean_sub_images/accuracy_plot.png")
+plt.close()

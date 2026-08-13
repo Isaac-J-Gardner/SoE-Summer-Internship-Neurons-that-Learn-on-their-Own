@@ -47,9 +47,10 @@ class NeuronAutoencoder(nn.Module):
 
     def forward(self, x):
         x = nn.Flatten()(x)
+        x = x - mean_image
         features = x                                        
         activations = torch.sigmoid(self.encoder(x))                  
-        decoded = (activations.unsqueeze(2) * self.decoder_weights.unsqueeze(0)
+        decoded = (activations.detach().unsqueeze(2) * self.decoder_weights.unsqueeze(0)
                    + self.decoder_bias.unsqueeze(0))        
         return decoded, features, activations
 

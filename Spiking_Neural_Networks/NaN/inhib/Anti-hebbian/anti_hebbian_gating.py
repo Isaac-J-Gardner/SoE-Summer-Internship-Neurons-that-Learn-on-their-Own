@@ -18,18 +18,18 @@ from snntorch import surrogate
 # ============================================================================
 # ---- standard ----
 batch_size  = 64
-lr          = 1       # NOTE: you had 10. With gating the loss is normalised by
+lr          = 0.01       # NOTE: you had 10. With gating the loss is normalised by
                          #   the number of ACTIVE neuron-sample pairs, so re-sweep;
                          #   lr=10 SGD will almost certainly diverge here.
-epochs      = 2
+epochs      = 5
 
 # ---- spiking ----
 beta        = 0.5        # membrane decay
 num_steps   = 20          # timesteps per image
-thresh      = 1.0        # base spiking threshold
+thresh      = 0.5        # base spiking threshold
 
-inhib_weight = 1
-inhib_leak = 0.75
+inhib_weight = 0.01
+inhib_leak = 0.99
 Lag_steps = 1 #the window that is checked for simultaneous firing, if 1, checks 1 before and 1 after, a window of size 3 time steps.
 
 # ---- NEW: competitive gating ----
@@ -127,6 +127,9 @@ def recon_loss(x_recon, x, activity):
     gradient) on that input."""
     target = x.unsqueeze(1).expand_as(x_recon)            # (B,H,784)
     se = ((x_recon - target) ** 2).mean(dim=2)            # (B,H) per neuron-sample
+    if GATING:
+        gate = (activity.detach() > 0).float()            # (B,H) 1 if neuron fired
+        return (se * gate).sum() / gate.sum().clamp(min=1)
     return se.mean()
 
 
