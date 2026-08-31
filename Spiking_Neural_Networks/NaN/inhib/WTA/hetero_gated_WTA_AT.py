@@ -24,16 +24,16 @@ lr          = 0.1       # NOTE: you had 10. With gating the loss is normalised b
 epochs      = 1
 
 # ---- spiking ----
-beta        = 0.5        # membrane decay
-num_steps   = 5          # timesteps per image
-thresh      = 1.0        # base spiking threshold
+beta        = 0.9        # membrane decay
+num_steps   = 20          # timesteps per image
+thresh      = 0.6        # base spiking threshold
 
 # ---- WTA lateral inhibition (your mechanism: negative recurrent weights) ----
-inhib_strength = 1     # subtractive inhibition; each spike lowers others' drive
+inhib_strength = 0.01     # subtractive inhibition; each spike lowers others' drive
 
 # ---- NEW: adaptive (homeostatic) threshold ----
-theta_plus  = 0.5    # a neuron that fires raises its own threshold by this
-theta_decay = 0.9        # thresholds decay back toward base each step
+theta_plus  = 0.25    # a neuron that fires raises its own threshold by this
+theta_decay = 0.999        # thresholds decay back toward base each step
                          #   -> too small: one neuron hogs (dead units)
                          #   -> too large: threshold overrides the match (scrambles)
 
@@ -204,5 +204,7 @@ for title, mat in [("encoder", W), ("decoder", W2), ("decoder bias", W3)]:
         f = mat[i].reshape(28, 28); m = np.abs(f).max() + 1e-9
         ax.imshow(f, cmap='seismic', vmin=-m, vmax=m); ax.set_title(f'neuron {i}'); ax.axis('off')
     plt.tight_layout()
-    plt.savefig(fname = f"Spiking_Neural_Networks/Images/SNN_NaN_WTA/gating/{title}_{lr}_{inhib_strength}_{theta_decay}_{theta_plus}.png")
+    plt.show()
+    plt.close()
+    #plt.savefig(fname = f"Spiking_Neural_Networks/Images/SNN_NaN_WTA/gating/{title}_{lr}_{inhib_strength}_{theta_decay}_{theta_plus}.png")
 

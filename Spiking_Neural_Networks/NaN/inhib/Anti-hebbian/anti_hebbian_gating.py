@@ -18,17 +18,17 @@ from snntorch import surrogate
 # ============================================================================
 # ---- standard ----
 batch_size  = 64
-lr          = 0.01       # NOTE: you had 10. With gating the loss is normalised by
+lr          = 0.5       # NOTE: you had 10. With gating the loss is normalised by
                          #   the number of ACTIVE neuron-sample pairs, so re-sweep;
                          #   lr=10 SGD will almost certainly diverge here.
-epochs      = 5
+epochs      = 1
 
 # ---- spiking ----
-beta        = 0.5        # membrane decay
-num_steps   = 20          # timesteps per image
-thresh      = 0.5        # base spiking threshold
+beta        = 0.9        # membrane decay
+num_steps   = 5          # timesteps per image
+thresh      = 1        # base spiking threshold
 
-inhib_weight = 0.01
+inhib_weight = 0.1
 inhib_leak = 0.99
 Lag_steps = 1 #the window that is checked for simultaneous firing, if 1, checks 1 before and 1 after, a window of size 3 time steps.
 

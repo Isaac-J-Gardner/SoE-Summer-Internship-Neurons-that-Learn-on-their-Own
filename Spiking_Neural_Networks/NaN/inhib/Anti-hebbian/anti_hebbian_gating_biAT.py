@@ -18,12 +18,12 @@ from snntorch import surrogate
 # ============================================================================
 # ---- standard ----
 batch_size  = 64
-lr          = 0.5       
+lr          = 1       
 epochs      = 2
 
 # ---- spiking ----
-beta        = 0.5        # membrane decay
-num_steps   = 20          # timesteps per image
+beta        = 0.9        # membrane decay
+num_steps   = 5          # timesteps per image
 thresh      = 1        # base spiking threshold
 
 # ---- NEW: bidirectional (homeostatic) adaptive threshold ----
@@ -42,9 +42,9 @@ theta_target = 0.05
                          #   -> lower it toward 0 to recover near the old
                          #      "fire-only-raises" behaviour.
 
-inhib_weight = 0.1
+inhib_weight = 0.001
 inhib_leak = 0.99
-Lag_steps=1
+Lag_steps=2
 
 # ---- NEW: competitive gating ----
 GATING = True            # if True, only neurons that fired learn on a given input

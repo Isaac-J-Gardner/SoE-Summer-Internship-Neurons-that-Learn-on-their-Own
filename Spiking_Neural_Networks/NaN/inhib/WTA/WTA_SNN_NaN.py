@@ -24,7 +24,7 @@ class NeuronDecoder(nn.Module):
         return h.unsqueeze(-1) * self.weight + self.bias   # (batch, n_neurons, in_dim)
 
 class WTASpikingEncoder(nn.Module):
-    def __init__(self, n_in=784, n_hidden=20, beta=0.9, inhib_strength=1.0):
+    def __init__(self, n_in=784, n_hidden=20, beta=0.9, inhib_strength=0.001):
         super().__init__()
         self.n_hidden = n_hidden
         self.fc  = nn.Linear(n_in, n_hidden)
@@ -150,8 +150,8 @@ test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=Fa
 
 # SNN parameters
 spike_grad = surrogate.atan(alpha=2.0)# alternate surrogate gradient: fast_sigmoid(slope=25) 
-beta = 0.5 #decay rate of neurons 
-num_steps=5 #time 
+beta = 0.9 #decay rate of neurons 
+num_steps=20 #time 
 thresh=1#spiking threshold (lower = more spikes are let through)
 epochs=1 #number of epochs
 max_epoch=epochs
@@ -161,7 +161,7 @@ net=SAE()
 net = net.to(device)
 
 optimizer = torch.optim.SGD(net.parameters(), 
-                            lr=10)
+                            lr=0.1)
 
 #Run training and testing        
 for e in range(epochs): 

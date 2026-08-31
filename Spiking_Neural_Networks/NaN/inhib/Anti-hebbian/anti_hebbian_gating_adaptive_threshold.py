@@ -34,8 +34,6 @@ theta_decay = 0.99#np.logspace(np.log(0.98), np.log(0.9999), 5)        # thresho
                          #   -> too large: threshold overrides the match (scrambles)
 
 inhib_weight = 0.1
-inhib_leak = 0.99
-Lag_steps = 1 #the window that is checked for simultaneous firing, if 1, checks 1 before and 1 after, a window of size 3 time steps.
 
 # ---- NEW: competitive gating ----
 GATING = True            # if True, only neurons that fired learn on a given input

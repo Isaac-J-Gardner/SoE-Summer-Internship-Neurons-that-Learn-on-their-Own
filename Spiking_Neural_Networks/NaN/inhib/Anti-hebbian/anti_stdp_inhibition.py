@@ -29,9 +29,7 @@ num_steps   = 20          # timesteps per image
 thresh      = 1.0        # base spiking threshold
 
 inhib_weight = 1
-inhib_leak = 0.75
-Lag_steps = 1 #the window that is checked for simultaneous firing, if 1, checks 1 before and 1 after, a window of size 3 time steps.
-
+p = 0.05
 # ---- NEW: competitive gating ----
 GATING = True            # if True, only neurons that fired learn on a given input
 # ============================================================================
@@ -76,10 +74,10 @@ class WTASpikingEncoder(nn.Module):
     @torch.no_grad()
     def update_inhibition(self, spk_rec, inhib_weight, leak=1e-3):
         S_flat = torch.cat(spk_rec, dim=0)
-        Sc = S_flat - S_flat.mean(0, keepdim=True)
-        cov = (Sc.T @ Sc) / (S_flat.shape[0] - 1)
-        cov.fill_diagonal_(0)
-        self.W_inh.mul_(1 - leak).add_(-inhib_weight * cov)
+        coinc = (S_flat.T @ S_flat) / S_flat.shape[0]   # <n_i n_m>
+        dW = coinc - p**2                               # n_i n_m - p^2
+        dW.fill_diagonal_(0)
+        self.W_inh.add_(-inhib_weight * dW)
         self.W_inh.clamp_(max=0.0)
 
 

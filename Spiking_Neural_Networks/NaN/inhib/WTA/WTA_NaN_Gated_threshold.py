@@ -18,22 +18,22 @@ from snntorch import surrogate
 # ============================================================================
 # ---- standard ----
 batch_size  = 64
-lr          = 0.1       # NOTE: you had 10. With gating the loss is normalised by
+lr          = 10       # NOTE: you had 10. With gating the loss is normalised by
                          #   the number of ACTIVE neuron-sample pairs, so re-sweep;
                          #   lr=10 SGD will almost certainly diverge here.
 epochs      = 5
 
 # ---- spiking ----
-beta        = 0.5        # membrane decay
-num_steps   = 5          # timesteps per image
-thresh      = 1.0        # base spiking threshold
+beta        = 0.9        # membrane decay
+num_steps   = 20          # timesteps per image
+thresh      = 0.5        # base spiking threshold
 
 # ---- WTA lateral inhibition (your mechanism: negative recurrent weights) ----
-inhib_strength = [0.35]#np.logspace(-1, np.log(3), 5)     # subtractive inhibition; each spike lowers others' drive
+inhib_strength = [0.1]#np.logspace(-1, np.log(3), 5)     # subtractive inhibition; each spike lowers others' drive
 
 # ---- NEW: adaptive (homeostatic) threshold ----
-theta_plus  = [3.5]#np.logspace(-1, 1, 5)    # a neuron that fires raises its own threshold by this
-theta_decay = [0.999]#np.logspace(np.log(0.98), np.log(0.9999), 5)        # thresholds decay back toward base each step
+theta_plus  = [0]#np.logspace(-1, 1, 5)    # a neuron that fires raises its own threshold by this
+theta_decay = [1]#np.logspace(np.log(0.98), np.log(0.9999), 5)        # thresholds decay back toward base each step
                          #   -> too small: one neuron hogs (dead units)
                          #   -> too large: threshold overrides the match (scrambles)
 

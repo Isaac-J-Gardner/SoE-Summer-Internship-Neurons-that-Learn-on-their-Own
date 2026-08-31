@@ -31,11 +31,13 @@ for (data, target) in train_loader:
     print('target:', target.size(), 'type:', target.type())
     break
 
+N=100
+
 class SimpleMLP(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc1 = nn.Linear(28*28, 20)
-        self.fc2 = nn.Linear(20, 10)
+        self.fc1 = nn.Linear(28*28, N)
+        self.fc2 = nn.Linear(N, 10)
 
     def forward(self, x):
         x = nn.Flatten()(x)
