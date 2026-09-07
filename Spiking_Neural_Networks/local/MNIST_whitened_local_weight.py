@@ -17,7 +17,7 @@ from snntorch import surrogate
 batch_size  = 100
 
 epochs      = 50
-N = 20
+N = 100
 
 membrane_decay = 0.9
 num_steps   = 50          # timesteps per image
@@ -137,8 +137,7 @@ def test_encoder(network, loader):
     losses = []
     spikes = []
     for img, _ in loader:
-        img = img.to(device)
-        img = _normalize(img)          # match training / readout
+        img = img.to(device)   # match training / readout
         spk_rec, x, activity = network(img)
         spikes.append(torch.cat(spk_rec, dim=0))
     spikes = torch.cat(spikes, dim=0)
@@ -152,7 +151,7 @@ def test_encoder(network, loader):
     return r_eff.item(), avg_rate.item(), avg_thresh.item(), inhibition_prop.item()
 
 class LinearReadout(nn.Module):
-    def __init__(self, n_neurons=20, n_classes=10):
+    def __init__(self, n_neurons=N, n_classes=10):
         super().__init__()
         self.fc = nn.Linear(n_neurons, n_classes)
 
@@ -169,7 +168,7 @@ def _normalize(img):
 @torch.no_grad()
 def extract_features(network, img):
     """Frozen forward pass -> per-neuron spike RATE feature (B, n_hidden)."""
-    _, _, activity = network(_normalize(img))   # activity = spikes summed over T
+    _, _, activity = network(img)   # activity = spikes summed over T
     return activity / num_steps                     # rate in ~[0,1] per neuron
 
 def train_readout(network, readout, loader, opti):
@@ -197,8 +196,7 @@ def eval_readout(network, readout, loader):
         total   += img.size(0)
     return correct / total
 
-def spk_effective_rank(spk_rec, n_neurons=20, eig_floor=1e-12, jitter=1e-6):
-    N = n_neurons
+def spk_effective_rank(spk_rec, eig_floor=1e-12, jitter=1e-6):
     spikes = spk_rec.permute(1, 0, 2).reshape(N, -1)      # (N, batch*num_steps)
 
     cov = torch.cov(spikes)                               # (N, N)
@@ -225,7 +223,7 @@ def train(network, loader, epoch):
     network.train()
     for i, (img, _) in enumerate(loader):
         img = img.to(device)
-        spk_rec, x, activity = network(_normalize(img))
+        spk_rec, x, activity = network(img)
         loss = network.learn(activity, x)
         network.encoder.update_inhibition(activity, alpha)
         network.encoder.update_threshold(spk_rec, gamma)
@@ -238,12 +236,38 @@ print('PyTorch:', torch.__version__)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print('device:', device)
 
-tfm = transforms.ToTensor()
+def fit_zca(X, eps):
+    mean = X.mean(dim=0, keepdim=True)
+    Xc = X - mean
+    cov = (Xc.T @ Xc) / (Xc.shape[0] - 1)
+    evals, evecs = torch.linalg.eigh(cov)                
+    evals = torch.clamp(evals, min=0.0)
+    W = evecs @ torch.diag(1.0 / torch.sqrt(evals + eps)) @ evecs.T
+    return mean, W
+
+@torch.no_grad()
+def compute_zca(dataset, eps):
+    # one big (N, 784) matrix; MNIST is ~188 MB in float32, fine on CPU
+    X = torch.stack([img.view(-1) for img, _ in dataset])   # (60000, 784)
+    return fit_zca(X, eps)                                   # mean:(1,784)  W:(784,784)
+
+base = datasets.MNIST('./data', train=True, download=True, transform=transforms.ToTensor())
+mean, W = compute_zca(base, eps=1e-2)
+
+class ZCAWhiten:
+    def __init__(self, mean, W):
+        self.mean = mean          # (1, 784), CPU
+        self.W = W                # (784, 784), CPU
+    def __call__(self, x):        # x: (1, 28, 28)
+        flat = x.reshape(1, -1)             # (1, 784)
+        white = (flat - self.mean) @ self.W # (1, 784)
+        return white.reshape(x.shape)       # (1, 28, 28)
+
+tfm = transforms.Compose([transforms.ToTensor(), ZCAWhiten(mean, W)])
 train_loader = DataLoader(datasets.MNIST('./data', train=True,  download=True, transform=tfm),
                           batch_size=batch_size, shuffle=True)
 test_loader  = DataLoader(datasets.MNIST('./data', train=False, download=True, transform=tfm),
                           batch_size=batch_size, shuffle=False)
-
 
 torch.manual_seed(0)
 
@@ -256,7 +280,7 @@ avg_rates =[]
 avg_threshs = []
 inhibition_props = []
 for e in range(epochs+1):
-    if (e)%5 == 0:
+    if (e)%10 == 0:
         test_epochs.append(e)
         r_eff, avg_rate, avg_thresh, inhibition_prop = test_encoder(net, test_loader)
         r_effs.append(r_eff)
@@ -287,7 +311,7 @@ for e in range(epochs+1):
         plt.close(fig)
 
 
-        readout        = LinearReadout(n_neurons=20, n_classes=10).to(device)
+        readout        = LinearReadout(n_neurons=N, n_classes=10).to(device)
         readout_opt    = torch.optim.SGD(readout.parameters(), lr=0.1)
 
         te_acc = 0

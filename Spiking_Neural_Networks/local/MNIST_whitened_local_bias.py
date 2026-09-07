@@ -16,7 +16,7 @@ EIG_FLOOR = 1e-12
 
 batch_size  = 100
 
-epochs      = 50
+epochs      = 100
 
 # ---- spiking ----
 membrane_decay = 0.9
@@ -34,6 +34,38 @@ GATING = True            # if True, only neurons that fired learn on a given inp
 
 spike_grad = surrogate.atan(alpha=2.0)
 
+def fit_zca(X, eps):
+    mean = X.mean(dim=0, keepdim=True)
+    Xc = X - mean
+    cov = (Xc.T @ Xc) / (Xc.shape[0] - 1)
+    evals, evecs = torch.linalg.eigh(cov)                
+    evals = torch.clamp(evals, min=0.0)
+    W = evecs @ torch.diag(1.0 / torch.sqrt(evals + eps)) @ evecs.T
+    return mean, W
+
+@torch.no_grad()
+def compute_zca(dataset, eps):
+    # one big (N, 784) matrix; MNIST is ~188 MB in float32, fine on CPU
+    X = torch.stack([img.view(-1) for img, _ in dataset])   # (60000, 784)
+    return fit_zca(X, eps)                                   # mean:(1,784)  W:(784,784)
+
+base = datasets.MNIST('./data', train=True, download=True, transform=transforms.ToTensor())
+mean, W = compute_zca(base, eps=1e-2)
+
+class ZCAWhiten:
+    def __init__(self, mean, W):
+        self.mean = mean          # (1, 784), CPU
+        self.W = W                # (784, 784), CPU
+    def __call__(self, x):        # x: (1, 28, 28)
+        flat = x.reshape(1, -1)             # (1, 784)
+        white = (flat - self.mean) @ self.W # (1, 784)
+        return white.reshape(x.shape)       # (1, 28, 28)
+
+tfm = transforms.ToTensor()
+train_loader = DataLoader(datasets.MNIST('./data', train=True,  download=True, transform=tfm),
+                          batch_size=batch_size, shuffle=True)
+test_loader  = DataLoader(datasets.MNIST('./data', train=False, download=True, transform=tfm),
+                          batch_size=batch_size, shuffle=False)
 
 class NeuronDecoder(nn.Module):
     def __init__(self, n_neurons=20, in_dim=784):
@@ -139,10 +171,6 @@ def train(network, loader, opti, epoch):
     for i, (img, _) in enumerate(loader):
         opti.zero_grad()
         img = img.to(device)
-        img_flat = img.view(img.size(0), -1)
-        mean = img_flat.mean(1).view(-1, 1, 1, 1)
-        std = img_flat.std(1).view(-1, 1, 1, 1)
-        img = (img - mean) / std
         spk_rec, x, x_recon, activity = network(img)
         loss = recon_loss(x_recon, x, activity)
         loss.backward()
@@ -163,7 +191,6 @@ def test_encoder(network, loader):
     spikes = []
     for img, _ in loader:
         img = img.to(device)
-        img = _normalize(img)          # match training / readout
         spk_rec, x, x_recon, activity = network(img)
         spikes.append(torch.cat(spk_rec, dim=0))
     spikes = torch.cat(spikes, dim=0)
@@ -194,7 +221,7 @@ def _normalize(img):
 @torch.no_grad()
 def extract_features(network, img):
     """Frozen forward pass -> per-neuron spike RATE feature (B, n_hidden)."""
-    _, _, _, activity = network(_normalize(img))   # activity = spikes summed over T
+    _, _, _, activity = network(img)   # activity = spikes summed over T
     return activity / num_steps                     # rate in ~[0,1] per neuron
 
 def train_readout(network, readout, loader, opti):
@@ -250,42 +277,6 @@ print('PyTorch:', torch.__version__)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print('device:', device)
 
-class ZCAWhitening:
-    def __init__(self, epsilon=0.1):
-        self.epsilon = epsilon
-    def fit(self, X):                     # X: (N, 784)
-        X = X.double()
-        self.mean_ = X.mean(0, keepdim=True)
-        Xc = X - self.mean_
-        cov = (Xc.T @ Xc) / Xc.shape[0]
-        eigvals, eigvecs = torch.linalg.eigh(cov)
-        inv_sqrt = (eigvals.clamp_min(0.0) + self.epsilon).rsqrt()
-        self.W_ = (eigvecs * inv_sqrt) @ eigvecs.T
-        return self
-    def transform(self, X):
-        return ((X.double() - self.mean_) @ self.W_).float()
-
-def per_image_normalize(X, eps=1e-8):     # zero-mean, unit-var per image; LAST step
-    X = X - X.mean(1, keepdim=True)
-    return X / (X.std(1, keepdim=True) + eps)
-
-# --- Pull raw tensors directly. `.data` is uint8 (N,28,28) and bypasses ToTensor ---
-train_ds = datasets.MNIST('./data', train=True,  download=True)
-test_ds  = datasets.MNIST('./data', train=False, download=True)
-
-X_train = train_ds.data.float().div(255.).view(-1, 784)   # scale to [0,1] first
-X_test  = test_ds.data.float().div(255.).view(-1, 784)
-y_train, y_test = train_ds.targets, test_ds.targets
-
-# --- Fit ZCA on TRAIN only, apply to both, then contrast-normalize last ---
-zca = ZCAWhitening(epsilon=0.1)                # tune by eye
-X_train = per_image_normalize(zca.fit_transform(X_train) if hasattr(zca,'fit_transform')
-                              else zca.fit(X_train).transform(X_train))
-X_test  = per_image_normalize(zca.transform(X_test))
-
-train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=batch_size, shuffle=True)
-test_loader  = DataLoader(TensorDataset(X_test,  y_test),  batch_size=batch_size, shuffle=False)
-
 torch.manual_seed(0)
 
 net = SAE().to(device)
@@ -296,9 +287,6 @@ r_effs = []
 avg_rates =[]
 avg_threshs = []
 inhibition_props = []
-for i in range(epochs+10):
-    train(net, train_loader, optimizer, i)
-
 for e in range(epochs+1):
     if (e)%10 == 0:
         test_epochs.append(e)
@@ -329,7 +317,7 @@ for e in range(epochs+1):
         ax.set_xlabel("source neuron j")
         ax.set_ylabel("target neuron i")
         plt.tight_layout()
-        plt.savefig(f"Spiking_Neural_Networks/Images/local/bias/inhib_e{e+60}.png")
+        plt.savefig(f"Spiking_Neural_Networks/Images/local/bias/inhib_e{e}.png")
         plt.close(fig)
 
 
@@ -346,9 +334,6 @@ for e in range(epochs+1):
                 f'train_acc {tr_acc:.4f}')
         te_acc = eval_readout(net, readout, test_loader)
         accuracy.append(te_acc)
-
-    if (e==50):
-        break
 
     train(net, train_loader, optimizer, e)
 
