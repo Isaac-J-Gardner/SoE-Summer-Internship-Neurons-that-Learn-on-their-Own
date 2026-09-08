@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"name": "SoE-Summer-Internship-Neurons-that-Learn-on-their-Own",
+			"path": "../../../.."
+		},
+		{
+			"name": "Train",
+			"path": "../../../../../../../../Downloads/Train"
+		},
+		{
+			"name": "Test",
+			"path": "../../../../../../../../Downloads/Test"
+		}
+	],
+	"settings": {}
+}
