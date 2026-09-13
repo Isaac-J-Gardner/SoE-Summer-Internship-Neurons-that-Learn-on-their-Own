@@ -16,7 +16,7 @@ EIG_FLOOR = 1e-12
 
 batch_size  = 100
 
-epochs      = 50
+epochs      = 20
 
 # ---- spiking ----
 membrane_decay = 0.9
@@ -80,10 +80,9 @@ class WTASpikingEncoder(nn.Module):
         self.W_inh.clamp_(min=0.0)
 
     @torch.no_grad()
-    def update_threshold(self, spk_rec, gamma):
-        S_flat = torch.cat(spk_rec, dim=0)
-        rate = S_flat.mean(0)
-        dtheta = gamma*(rate-p)
+    def update_threshold(self, activity, gamma): #SAILnet thresholding rule
+        batch_dtheta = gamma*(activity - p*num_steps)
+        dtheta = torch.mean(batch_dtheta, dim=0) #average the change across all batches
         self.theta.add_(dtheta)
 
 
@@ -148,7 +147,7 @@ def train(network, loader, opti, epoch):
         loss.backward()
         opti.step()
         network.encoder.update_inhibition(activity, alpha)
-        network.encoder.update_threshold(spk_rec, gamma)
+        network.encoder.update_threshold(activity, gamma)
         if i % 50 == 0:
             print(f'Train[{epoch+1}/{epochs}][{i}/{len(loader)}] Loss: {loss.item():.5f} ')
 
@@ -269,22 +268,27 @@ def per_image_normalize(X, eps=1e-8):     # zero-mean, unit-var per image; LAST 
     X = X - X.mean(1, keepdim=True)
     return X / (X.std(1, keepdim=True) + eps)
 
-# --- Pull raw tensors directly. `.data` is uint8 (N,28,28) and bypasses ToTensor ---
-train_ds = datasets.MNIST('./data', train=True,  download=True)
-test_ds  = datasets.MNIST('./data', train=False, download=True)
+print('Using PyTorch version:', torch.__version__)
+if torch.cuda.is_available():
+    print('Using GPU, device name:', torch.cuda.get_device_name(0))
+    device = torch.device('cuda')
+else:
+    print('No GPU found, using CPU instead.')
+    device = torch.device('cpu')
 
-X_train = train_ds.data.float().div(255.).view(-1, 784)   # scale to [0,1] first
-X_test  = test_ds.data.float().div(255.).view(-1, 784)
-y_train, y_test = train_ds.targets, test_ds.targets
+data_dir = './data'
+print('data_dir =', data_dir)
 
-# --- Fit ZCA on TRAIN only, apply to both, then contrast-normalize last ---
-zca = ZCAWhitening(epsilon=0.1)                # tune by eye
-X_train = per_image_normalize(zca.fit_transform(X_train) if hasattr(zca,'fit_transform')
-                              else zca.fit(X_train).transform(X_train))
-X_test  = per_image_normalize(zca.transform(X_test))
+train_dataset = datasets.MNIST(data_dir, train=True, download=True, transform=transforms.ToTensor())
+test_dataset = datasets.MNIST(data_dir, train=False, transform=transforms.ToTensor())
 
-train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=batch_size, shuffle=True)
-test_loader  = DataLoader(TensorDataset(X_test,  y_test),  batch_size=batch_size, shuffle=False)
+train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
+test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False)
+
+for (data, target) in train_loader:
+    print('data:', data.size(), 'type:', data.type())
+    print('target:', target.size(), 'type:', target.type())
+    break
 
 torch.manual_seed(0)
 

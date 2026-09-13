@@ -18,8 +18,6 @@ batch_size  = 100
 
 epochs      = 100
 
-# ---- spiking ----
-membrane_decay = 0.9
 num_steps   = 50          # timesteps per image
 theta      = 2.0        # base spiking threshold
 beta = 0.9
@@ -278,9 +276,8 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print('device:', device)
 
 torch.manual_seed(0)
-
 net = SAE().to(device)
-optimizer = torch.optim.SGD(net.parameters(), lr=learning_beta)
+optimizer = torch.optim.SGD(net.encoder.fc.parameters(), lr=learning_beta)
 test_epochs = []
 accuracy = []
 r_effs = []

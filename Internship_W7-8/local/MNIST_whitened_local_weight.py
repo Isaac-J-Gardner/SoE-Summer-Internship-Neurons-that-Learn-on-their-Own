@@ -80,10 +80,9 @@ class WTASpikingEncoder(nn.Module):
         self.W_inh.clamp_(min=0.0)
 
     @torch.no_grad()
-    def update_threshold(self, spk_rec, gamma):
-        S_flat = torch.cat(spk_rec, dim=0)
-        rate = S_flat.mean(0)
-        dtheta = gamma*(rate-p)
+    def update_threshold(self, activity, gamma): #SAILnet thresholding rule
+        batch_dtheta = gamma*(activity - p*num_steps)
+        dtheta = torch.mean(batch_dtheta, dim=0) #average the change across all batches
         self.theta.add_(dtheta)
 
 
@@ -138,7 +137,7 @@ def test_encoder(network, loader):
     spikes = []
     for img, _ in loader:
         img = img.to(device)   # match training / readout
-        spk_rec, x, activity = network(img)
+        spk_rec, x, activity = network(_normalize(img))
         spikes.append(torch.cat(spk_rec, dim=0))
     spikes = torch.cat(spikes, dim=0)
     r_eff = spk_effective_rank(spikes.unsqueeze(-1))
@@ -168,7 +167,7 @@ def _normalize(img):
 @torch.no_grad()
 def extract_features(network, img):
     """Frozen forward pass -> per-neuron spike RATE feature (B, n_hidden)."""
-    _, _, activity = network(img)   # activity = spikes summed over T
+    _, _, activity = network(_normalize(img))   # activity = spikes summed over T
     return activity / num_steps                     # rate in ~[0,1] per neuron
 
 def train_readout(network, readout, loader, opti):
@@ -223,7 +222,7 @@ def train(network, loader, epoch):
     network.train()
     for i, (img, _) in enumerate(loader):
         img = img.to(device)
-        spk_rec, x, activity = network(img)
+        spk_rec, x, activity = network(_normalize(img))
         loss = network.learn(activity, x)
         network.encoder.update_inhibition(activity, alpha)
         network.encoder.update_threshold(spk_rec, gamma)
@@ -231,43 +230,27 @@ def train(network, loader, epoch):
             print(f'Train[{epoch+1}/{epochs}][{i}/{len(loader)}] Loss: {loss:.5f} ')
 
 
-# ---- setup -----------------------------------------------------------------
-print('PyTorch:', torch.__version__)
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print('device:', device)
+print('Using PyTorch version:', torch.__version__)
+if torch.cuda.is_available():
+    print('Using GPU, device name:', torch.cuda.get_device_name(0))
+    device = torch.device('cuda')
+else:
+    print('No GPU found, using CPU instead.')
+    device = torch.device('cpu')
 
-def fit_zca(X, eps):
-    mean = X.mean(dim=0, keepdim=True)
-    Xc = X - mean
-    cov = (Xc.T @ Xc) / (Xc.shape[0] - 1)
-    evals, evecs = torch.linalg.eigh(cov)                
-    evals = torch.clamp(evals, min=0.0)
-    W = evecs @ torch.diag(1.0 / torch.sqrt(evals + eps)) @ evecs.T
-    return mean, W
+data_dir = './data'
+print('data_dir =', data_dir)
 
-@torch.no_grad()
-def compute_zca(dataset, eps):
-    # one big (N, 784) matrix; MNIST is ~188 MB in float32, fine on CPU
-    X = torch.stack([img.view(-1) for img, _ in dataset])   # (60000, 784)
-    return fit_zca(X, eps)                                   # mean:(1,784)  W:(784,784)
+train_dataset = datasets.MNIST(data_dir, train=True, download=True, transform=transforms.ToTensor())
+test_dataset = datasets.MNIST(data_dir, train=False, transform=transforms.ToTensor())
 
-base = datasets.MNIST('./data', train=True, download=True, transform=transforms.ToTensor())
-mean, W = compute_zca(base, eps=1e-2)
+train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
+test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False)
 
-class ZCAWhiten:
-    def __init__(self, mean, W):
-        self.mean = mean          # (1, 784), CPU
-        self.W = W                # (784, 784), CPU
-    def __call__(self, x):        # x: (1, 28, 28)
-        flat = x.reshape(1, -1)             # (1, 784)
-        white = (flat - self.mean) @ self.W # (1, 784)
-        return white.reshape(x.shape)       # (1, 28, 28)
-
-tfm = transforms.Compose([transforms.ToTensor(), ZCAWhiten(mean, W)])
-train_loader = DataLoader(datasets.MNIST('./data', train=True,  download=True, transform=tfm),
-                          batch_size=batch_size, shuffle=True)
-test_loader  = DataLoader(datasets.MNIST('./data', train=False, download=True, transform=tfm),
-                          batch_size=batch_size, shuffle=False)
+for (data, target) in train_loader:
+    print('data:', data.size(), 'type:', data.type())
+    print('target:', target.size(), 'type:', target.type())
+    break
 
 torch.manual_seed(0)
 

@@ -58,7 +58,7 @@ print(model)
 
 criterion = nn.CrossEntropyLoss()
 recon_criterion = nn.MSELoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=0.l)
+optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
 
 def correct(output, target):
     predicted_digits = output.argmax(1)                            # pick digit with largest network output
