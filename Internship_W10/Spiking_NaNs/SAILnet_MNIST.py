@@ -21,16 +21,16 @@ batch_size  = 100
 
 epochs      = 20
 
-N = 5 #number of hidden neurons (neuron autoencoders)
+N = 2 #number of hidden neurons (neuron autoencoders)
 
 num_steps   = 50     #5 time constants, each image is shown for 50 time steps
 theta      = 2.0     #starting threshold for each hidden neuron (readout threshold are set really high, potential is used to infer recon)
 beta = 0.9           #membrane decay rate, produces time constant of ~10 time steps
 
-alpha = 1 #mutual inhibition learning rate
+alpha = 1*7 #mutual inhibition learning rate
 learning_beta = 0.01 #task loss optimiser learning rate
 gamma = 0.1 #adaptive threshold learning rate
-p = 0.05 #desired firing rate (per time step, neurons should fire 2.5 times per image)
+p = 1/N #desired firing rate (per time step, neurons should fire 2.5 times per image)
 
 GATING = True
 
@@ -160,7 +160,7 @@ def train(network, loader, epoch):
     network.train()
     for i, (img, _) in enumerate(loader):
         img = img.to(device)
-        spk_rec, x, activity = network(img)
+        spk_rec, x, activity = network(_normalize(img))
         loss = network.learn(activity, x)
         network.encoder.update_inhibition(activity, alpha)
         network.encoder.update_threshold(activity, gamma)
@@ -216,7 +216,7 @@ def test_encoder(network, loader):
     spikes = []
     for img, _ in loader:
         img = img.to(device)
-        spk_rec, x, activity = network(img)
+        spk_rec, x, activity = network(_normalize(img))
         spikes.append(torch.cat(spk_rec, dim=0))
     spikes = torch.cat(spikes, dim=0)
     r_eff = spk_effective_rank(spikes.unsqueeze(-1))
@@ -349,7 +349,7 @@ def save_line_plot(x, series, title, ylabel, filename, xlabel="Epoch"):
     plt.close()
  
  
-def save_feature_grid(mat, title, epoch, rows=4, cols=5, shape=(28, 28)):
+def save_feature_grid(mat, title, epoch, rows=1, cols=2, shape=(28, 28)):
     """Show the first rows*cols rows of a 2-D weight matrix as images."""
     fig, axes = plt.subplots(rows, cols, figsize=(10, 8))
     fig.suptitle(title)
